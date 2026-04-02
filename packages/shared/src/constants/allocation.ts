@@ -1,0 +1,2 @@
+export const DEFAULT_MAX_DAILY_LEADS = 10;
+export const DEFAULT_MAX_WEEKLY_LEADS = 50;

@@ -1,0 +1,639 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Notes ────────────────────────────────────────────────────────────────────
+// SQLite doesn't support enums or JSON types natively.
+// All enum fields are stored as String with validation handled by Zod schemas.
+// JSON fields (formData, quotesData, etc.) are stored as String (JSON-serialized).
+// When migrating to PostgreSQL for production, convert these back to enum/Json types.
+
+// ─── User ─────────────────────────────────────────────────────────────────────
+
+model User {
+  id         String  @id @default(uuid())
+  email      String  @unique
+  password   String
+  name       String
+  role       String  @default("SALES_EXEC") // SALES_EXEC | SALES_ADMIN | ACCOUNTANT | UNDERWRITER | UW_MANAGER | ADMIN
+  department String  @default("SALES")      // SALES | ACCOUNTS | UNDERWRITING | ADMIN
+  avatar     String?
+  language   String  @default("en")         // en | ar
+  isActive   Boolean @default(true)
+  isOnLeave  Boolean @default(false)
+  assignedUnderwriterId String?
+  assignedUnderwriter   User?   @relation("SalesUwMapping", fields: [assignedUnderwriterId], references: [id])
+  assignedSalesExecs    User[]  @relation("SalesUwMapping")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relations
+  assignedLeads        Lead[]              @relation("LeadAssignee")
+  createdCustomers     CustomerID[]        @relation("CustomerCreator")
+  issuedPolicies       Policy[]            @relation("PolicyIssuer")
+  requestedEndorsements Endorsement[]      @relation("EndorsementRequester")
+  processedEndorsements Endorsement[]      @relation("EndorsementProcessor")
+  createdInvoices      Invoice[]           @relation("InvoiceCreator")
+  approvedInvoices     Invoice[]           @relation("InvoiceApprover")
+  assignedQueueItems   AccountsQueueItem[] @relation("QueueAssignee")
+  uwAssignments        UwAssignment[]      @relation("UwAssignee")
+  uwAssignmentsGiven   UwAssignment[]      @relation("UwAssigner")
+  notifications        Notification[]
+  activities           Activity[]
+  allocationPools      AllocationPoolAgent[]
+  assignmentsReceived  LeadAssignmentLog[] @relation("AssignmentAgent")
+  assignmentsGiven     LeadAssignmentLog[] @relation("AssignmentAssigner")
+  createdNotes         LeadNote[]          @relation("NoteCreator")
+  assignedTasks        LeadTask[]          @relation("TaskAssignee")
+  createdTasks         LeadTask[]          @relation("TaskCreator")
+
+  @@index([assignedUnderwriterId])
+  @@map("users")
+}
+
+// ─── Lead ─────────────────────────────────────────────────────────────────────
+
+model Lead {
+  id              String    @id @default(uuid())
+  ref             String    @unique              // L-YYYY-XXXX
+  productType     String                         // CARGO | HULL | LIABILITY | etc.
+  formData        String                         // JSON-serialized product form
+  quotesData      String?                        // JSON-serialized quotes array
+  selectedQuote   String?                        // JSON-serialized selected quote
+  fullName        String
+  email           String
+  phone           String?
+  company         String?
+  nationality     String?
+  residence       String?
+  contactPref     String    @default("Email")
+  currency        String    @default("AED")
+  language        String    @default("en")
+  source          String    @default("web")      // web | phone | referral | broker | etc.
+  status          String    @default("new")      // new | contacted | quoted | selected | converted | lost
+  statusNote      String?
+  score           Int       @default(0)
+  assignedToId    String?
+  assignedTo      User?     @relation("LeadAssignee", fields: [assignedToId], references: [id])
+  declineReason   String?
+  temperatureOverride String?              // null = auto-calculated, 'hot' | 'warm' | 'cold'
+  lastActivityAt  DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  documents       LeadDocument[]
+  notes           LeadNote[]
+  assignmentLogs  LeadAssignmentLog[]
+  customers       CustomerID[]
+  tasks           LeadTask[]
+
+  @@index([status])
+  @@index([productType])
+  @@index([email])
+  @@index([createdAt])
+  @@index([score])
+  @@index([assignedToId])
+  @@index([source])
+  @@index([lastActivityAt])
+  @@unique([email, productType])
+  @@map("leads")
+}
+
+model LeadDocument {
+  id           String   @id @default(uuid())
+  leadId       String
+  lead         Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  filename     String
+  originalName String
+  mimeType     String
+  size         Int
+  url          String
+  createdAt    DateTime @default(now())
+
+  @@map("lead_documents")
+}
+
+model LeadNote {
+  id          String   @id @default(uuid())
+  leadId      String
+  lead        Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  content     String
+  createdById String
+  createdBy   User     @relation("NoteCreator", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+
+  @@index([leadId, createdAt])
+  @@map("lead_notes")
+}
+
+model LeadTask {
+  id           String    @id @default(uuid())
+  leadId       String
+  lead         Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  title        String
+  description  String?
+  dueDate      DateTime
+  status       String    @default("open")  // open | completed | overdue
+  completedAt  DateTime?
+  assignedToId String
+  assignedTo   User      @relation("TaskAssignee", fields: [assignedToId], references: [id])
+  createdById  String
+  createdBy    User      @relation("TaskCreator", fields: [createdById], references: [id])
+  responseType   String?   // callback | no_answer | quotation_sent | lost_lead | redundant_lead | too_early | transferred
+  responseNotes  String?
+  lostReason     String?   // Only when responseType = 'lost_lead'
+  reminderSent    Boolean   @default(false)
+  overdueNotified Boolean   @default(false)
+  parentTaskId   String?   @unique
+  parentTask     LeadTask?  @relation("TaskChain", fields: [parentTaskId], references: [id])
+  followUpTask   LeadTask?  @relation("TaskChain")
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([leadId, status])
+  @@index([dueDate])
+  @@index([assignedToId, status])
+  @@index([parentTaskId])
+  @@map("lead_tasks")
+}
+
+// ─── Customer ID ──────────────────────────────────────────────────────────────
+
+model CustomerID {
+  id            String   @id @default(uuid())
+  ref           String   @unique               // C-L-XXXX-XXX
+  leadId        String
+  lead          Lead     @relation(fields: [leadId], references: [id])
+  customerName  String
+  email         String
+  phone         String?
+  company       String?
+  nationality   String?
+  residence     String?
+  contactPref   String   @default("Email")
+  currency      String   @default("AED")
+  language      String   @default("en")
+  createdById   String
+  createdBy     User     @relation("CustomerCreator", fields: [createdById], references: [id])
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  policies      Policy[]
+  endorsements  Endorsement[]
+  invoices      Invoice[]
+
+  @@index([leadId])
+  @@index([ref])
+  @@index([createdById])
+  @@map("customer_ids")
+}
+
+// ─── Policy ───────────────────────────────────────────────────────────────────
+
+model Policy {
+  id              String    @id @default(uuid())
+  ref             String    @unique              // P-YYYY-XXXX
+  customerIdId    String
+  customerId      CustomerID @relation(fields: [customerIdId], references: [id])
+  insurer         String
+  product         String                         // CARGO | HULL | LIABILITY | etc.
+  premium         Float
+  sumInsured      Float
+  commission      Float     @default(0)
+  commissionRate  Float     @default(0)
+  startDate       DateTime
+  endDate         DateTime
+  status          String    @default("PENDING_UW") // PENDING_UW | ACTIVE | CANCELLED | EXPIRED
+
+  // ─── UW-filled fields ─────────────────────────────────────────────────────
+  policyNumber    String?                          // Underwriter fills (insurer's policy number)
+  policyHolderName String?                         // Underwriter fills
+  premiumCharged  Float?                           // Actual premium charged by insurer
+  policyDocument  String?                          // URL to policy PDF/image
+  policySchedule  String?                          // URL to policy schedule doc
+  debitNoteNumber String?
+  debitNoteAmount Float?
+  debitNotePath   String?                          // URL to debit note doc
+  creditNoteNumber String?
+  creditNoteAmount Float?
+  creditNotePath  String?                          // URL to credit note doc
+
+  issuedById      String?
+  issuedBy        User?     @relation("PolicyIssuer", fields: [issuedById], references: [id])
+  issuedAt        DateTime?
+  renewalTaskCreatedAt DateTime?                    // Dedup flag: set when renewal task is created
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  endorsements    Endorsement[]
+  invoices        Invoice[]
+  uwAssignments   UwAssignment[] @relation("PolicyUwAssignment")
+
+  @@index([customerIdId])
+  @@index([status])
+  @@index([ref])
+  @@index([product])
+  @@index([createdAt])
+  @@index([endDate, status])
+  @@map("policies")
+}
+
+// ─── Endorsement ──────────────────────────────────────────────────────────────
+
+model Endorsement {
+  id              String    @id @default(uuid())
+  ref             String    @unique              // E-YYYY-XXXX
+  policyId        String
+  policy          Policy    @relation(fields: [policyId], references: [id])
+  customerIdId    String
+  customerId      CustomerID @relation(fields: [customerIdId], references: [id])
+  type            String                         // CANCELLATION | EXTENSION | NAME_CHANGE | ADDON
+  status          String    @default("DRAFT")    // DRAFT | PENDING_APPROVAL | APPROVED | PENDING_UW | UW_IN_PROGRESS | PENDING_COMPLETION | COMPLETED | REJECTED
+  details         String?                        // JSON-serialized endorsement details
+  effectiveDate   DateTime?
+  financialImpact Float?                         // Financial impact amount (positive = charge, negative = refund)
+  reason          String?                        // Reason for endorsement (especially cancellation)
+
+  // ─── UW-filled document fields ─────────────────────────────────────────────
+  creditNoteNumber  String?
+  creditNoteAmount  Float?
+  creditNotePath    String?                      // URL to credit note doc
+  cancellationLetterPath String?                 // URL to cancellation letter (cancellation only)
+  refundCalculationPath  String?                 // URL to refund calculation doc (cancellation only)
+  revisedDocumentPath    String?                 // URL to revised policy doc (extension/nc/addon)
+
+  // ─── Cancellation-specific UW fields ──────────────────────────────────────
+  debitNoteNumber          String?
+  debitNoteAmount          Float?
+  debitNotePath            String?                // URL to debit note doc
+  cancellationDate         DateTime?              // Actual cancellation date
+  endorsementCertificatePath String?              // URL to endorsement certificate
+
+  requestedById   String
+  requestedBy     User      @relation("EndorsementRequester", fields: [requestedById], references: [id])
+  processedById   String?
+  processedBy     User?     @relation("EndorsementProcessor", fields: [processedById], references: [id])
+  completedAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  invoices        Invoice[]
+  uwAssignments   UwAssignment[] @relation("EndorsementUwAssignment")
+  accountsQueueItems AccountsQueueItem[] @relation("EndorsementQueueItem")
+
+  @@index([policyId])
+  @@index([customerIdId])
+  @@index([status])
+  @@index([type])
+  @@index([createdAt])
+  @@map("endorsements")
+}
+
+// ─── Invoice ──────────────────────────────────────────────────────────────────
+
+model Invoice {
+  id              String    @id @default(uuid())
+  invoiceNumber   String    @unique              // INV-YYYY-XXXX[-suffix]
+  customerIdId    String
+  customerId      CustomerID @relation(fields: [customerIdId], references: [id])
+  policyId        String?
+  policy          Policy?   @relation(fields: [policyId], references: [id])
+  endorsementId   String?
+  endorsement     Endorsement? @relation(fields: [endorsementId], references: [id])
+  type            String                         // NEW_POLICY | CANCELLATION | EXTENSION | NAME_CHANGE | ADDON
+  amount          Float                          // Total Policy Premium
+  receiptAmount   Float?                         // Actual receipt amount collected
+  vat             Float     @default(0)
+  total           Float
+  currency        String    @default("AED")
+  status          String    @default("DRAFT")    // DRAFT | PENDING_APPROVAL | APPROVED | DECLINED | PAID | CANCELLED
+  dueDate         DateTime
+  paymentDate     DateTime?                      // When payment was received
+  paymentMode     String?                        // Online | Direct | COD | Cheque
+  installment     Boolean   @default(false)      // Is this an installment payment?
+  installmentDetails String?                     // JSON-serialized installment schedule
+  receiptPath     String?                        // URL to receipt upload (PDF/Image)
+  notes           String?
+  remarks         String?                        // Accountant remarks (on decline)
+  policyPurchaseType String?                      // ANNUAL | TEMPORARY
+  createdById     String
+  createdBy       User      @relation("InvoiceCreator", fields: [createdById], references: [id])
+  approvedById    String?
+  approvedBy      User?     @relation("InvoiceApprover", fields: [approvedById], references: [id])
+  approvedAt      DateTime?
+  declinedAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  accountsQueueItems AccountsQueueItem[] @relation("InvoiceQueueItem")
+
+  @@index([customerIdId])
+  @@index([policyId])
+  @@index([endorsementId])
+  @@index([status])
+  @@index([type])
+  @@index([invoiceNumber])
+  @@index([createdAt])
+  @@map("invoices")
+}
+
+// ─── Accounts Queue ───────────────────────────────────────────────────────────
+
+model AccountsQueueItem {
+  id              String    @id @default(uuid())
+  type            String                         // APPROVAL | COMPLETION
+  invoiceId       String?
+  invoice         Invoice?  @relation("InvoiceQueueItem", fields: [invoiceId], references: [id])
+  endorsementId   String?
+  endorsement     Endorsement? @relation("EndorsementQueueItem", fields: [endorsementId], references: [id])
+  status          String    @default("PENDING")  // PENDING | IN_REVIEW | APPROVED | COMPLETED | REJECTED
+  assignedToId    String?
+  assignedTo      User?     @relation("QueueAssignee", fields: [assignedToId], references: [id])
+  notes           String?
+  processedAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([type])
+  @@index([status])
+  @@index([assignedToId])
+  @@index([createdAt])
+  @@map("accounts_queue_items")
+}
+
+// ─── UW Assignment ────────────────────────────────────────────────────────────
+
+model UwAssignment {
+  id              String    @id @default(uuid())
+  policyId        String?
+  policy          Policy?   @relation("PolicyUwAssignment", fields: [policyId], references: [id])
+  endorsementId   String?
+  endorsement     Endorsement? @relation("EndorsementUwAssignment", fields: [endorsementId], references: [id])
+  underwriterId   String
+  underwriter     User      @relation("UwAssignee", fields: [underwriterId], references: [id])
+  status          String    @default("QUEUED")   // QUEUED | IN_PROGRESS | COMPLETED | RETURNED
+  assignedById    String?
+  assignedBy      User?     @relation("UwAssigner", fields: [assignedById], references: [id])
+  notes           String?
+  startedAt       DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([underwriterId])
+  @@index([status])
+  @@index([policyId])
+  @@index([endorsementId])
+  @@index([createdAt])
+  @@map("uw_assignments")
+}
+
+// ─── Notification ─────────────────────────────────────────────────────────────
+
+model Notification {
+  id         String   @id @default(uuid())
+  type       String
+  title      String
+  body       String
+  entityId   String?                            // Generic reference to any entity
+  entityType String?                            // 'lead' | 'customer' | 'policy' | 'endorsement' | 'invoice' etc.
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  isRead     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@index([userId, isRead])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+// ─── Activity Log ─────────────────────────────────────────────────────────────
+
+model Activity {
+  id         String   @id @default(uuid())
+  entityId   String                              // Generic reference to any entity
+  entityType String                              // 'lead' | 'customer' | 'policy' | 'endorsement' | 'invoice'
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  action     String
+  detail     String?
+  createdAt  DateTime @default(now())
+
+  @@index([entityId, entityType, createdAt])
+  @@map("activities")
+}
+
+// ─── System Configuration ─────────────────────────────────────────────────────
+
+model SystemConfig {
+  key       String   @id
+  value     String
+  label     String?
+  category  String   @default("general")
+  updatedAt DateTime @updatedAt
+
+  @@map("system_config")
+}
+
+// ─── Round-Robin Lead Allocation ──────────────────────────────────────────────
+
+model AllocationPool {
+  id             String   @id @default(uuid())
+  name           String
+  productTypes   String                          // JSON array e.g. '["CARGO","HULL"]'
+  languages      String   @default("[\"en\"]")   // JSON array e.g. '["en","ar"]'
+  isActive       Boolean  @default(true)
+  maxDailyLeads  Int      @default(10)
+  maxWeeklyLeads Int      @default(50)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  agents         AllocationPoolAgent[]
+  assignmentLogs LeadAssignmentLog[]
+
+  @@index([isActive])
+  @@map("allocation_pools")
+}
+
+model AllocationPoolAgent {
+  id             String    @id @default(uuid())
+  poolId         String
+  pool           AllocationPool @relation(fields: [poolId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User     @relation(fields: [userId], references: [id])
+  isActive       Boolean  @default(true)
+  lastAssignedAt DateTime?
+  createdAt      DateTime @default(now())
+
+  @@unique([poolId, userId])
+  @@index([poolId, isActive])
+  @@index([userId])
+  @@map("allocation_pool_agents")
+}
+
+model LeadAssignmentLog {
+  id            String    @id @default(uuid())
+  leadId        String
+  lead          Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  assignedToId  String
+  assignedTo    User      @relation("AssignmentAgent", fields: [assignedToId], references: [id])
+  assignedById  String?
+  assignedBy    User?     @relation("AssignmentAssigner", fields: [assignedById], references: [id])
+  poolId        String?
+  pool          AllocationPool? @relation(fields: [poolId], references: [id])
+  method        String                           // ROUND_ROBIN | MANUAL
+  reason        String?
+  createdAt     DateTime  @default(now())
+
+  @@index([leadId])
+  @@index([assignedToId, createdAt])
+  @@index([createdAt])
+  @@map("lead_assignment_logs")
+}
+
+// ─── Product Catalog ──────────────────────────────────────────────────────────
+
+model Insurer {
+  id               String   @id @default(uuid())
+  code             String   @unique                // e.g. OI, AX, OM, AD, DT
+  name             String                          // e.g. Orient Insurance
+  logo             String                          // Short logo text
+  rating           String                          // AM Best rating e.g. A, A+, A-
+  specialty        String
+  competitiveFactor Float                          // 0.92–1.11 spread factor
+  responseHours    Int      @default(4)
+  isActive         Boolean  @default(true)
+  sortOrder        Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  rateTables       RateTable[]
+  riskModifiers    RiskModifier[]
+  coverageInclusions CoverageInclusion[]
+  commissionSchedules CommissionSchedule[]
+
+  @@index([isActive])
+  @@map("insurers")
+}
+
+model Product {
+  id               String   @id @default(uuid())
+  code             String   @unique                // CARGO, HULL, etc.
+  label            String                          // Marine Cargo
+  description      String?                         // Short desc for landing page
+  iconKey          String                          // Lucide icon or emoji
+  color            String   @default("#0ea5e9")    // Brand color hex
+  estimatedMinutes Int      @default(3)
+  formStepsJson    String                          // JSON: ["Policy Type","Shipment Details","Contact"]
+  formFieldsJson   String                          // JSON: form field definitions per step
+  defaultsJson     String                          // JSON: default form values
+  baseRateMin      Float                           // e.g. 0.0015
+  baseRateMax      Float                           // e.g. 0.0035
+  deductibleRate   Float                           // e.g. 0.005 (0.5%)
+  coverageMultiplier Float  @default(1.0)          // 1.10 for cargo (CIF+10%), 1.0 for hull
+  valueField       String   @default("vesselValue") // Which form field holds the insured value
+  scoringWeight    Int      @default(10)            // Lead scoring weight (max 25)
+  isActive         Boolean  @default(true)
+  sortOrder        Int      @default(0)
+  badge            String?                         // e.g. "Orient" for partner products
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  rateTables       RateTable[]
+  riskModifiers    RiskModifier[]
+  coverageInclusions CoverageInclusion[]
+  commissionSchedules CommissionSchedule[]
+
+  @@index([isActive])
+  @@map("products")
+}
+
+model RateTable {
+  id            String   @id @default(uuid())
+  productId     String
+  product       Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  insurerId     String
+  insurer       Insurer  @relation(fields: [insurerId], references: [id], onDelete: Cascade)
+  rate          Float                              // The actual rate value
+  effectiveFrom DateTime @default(now())
+  effectiveTo   DateTime?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([productId, insurerId, effectiveFrom])
+  @@index([productId, insurerId, isActive])
+  @@map("rate_tables")
+}
+
+model RiskModifier {
+  id            String   @id @default(uuid())
+  productId     String?
+  product       Product? @relation(fields: [productId], references: [id], onDelete: Cascade)
+  insurerId     String?
+  insurer       Insurer? @relation(fields: [insurerId], references: [id], onDelete: Cascade)
+  modifierType  String                             // CLAIMS | AGE | ICC | ROUTE | USE | RACING | MODE | WAR | PERISHABLE | TPL | POLLUTION | LOH
+  conditionKey  String                             // The form field value that triggers this, e.g. "None", "1", "ICC (A) – All Risks"
+  factor        Float                              // Multiplicative factor, e.g. 1.2
+  label         String?                            // Human-readable label
+  sortOrder     Int      @default(0)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([modifierType, isActive])
+  @@index([productId])
+  @@map("risk_modifiers")
+}
+
+model CoverageInclusion {
+  id            String   @id @default(uuid())
+  productId     String
+  product       Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  insurerId     String?
+  insurer       Insurer? @relation(fields: [insurerId], references: [id], onDelete: Cascade)
+  inclusionText String                             // e.g. "Institute Cargo Clauses"
+  sortOrder     Int      @default(0)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+
+  @@index([productId, isActive])
+  @@map("coverage_inclusions")
+}
+
+model CommissionSchedule {
+  id            String   @id @default(uuid())
+  productId     String
+  product       Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  insurerId     String?
+  insurer       Insurer? @relation(fields: [insurerId], references: [id], onDelete: Cascade)
+  rate          Float                              // e.g. 15.0 (percent)
+  effectiveFrom DateTime @default(now())
+  effectiveTo   DateTime?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([productId, isActive])
+  @@map("commission_schedules")
+}
+
+model ReferenceData {
+  id            String   @id @default(uuid())
+  category      String                             // COUNTRY | NAV_AREA | CURRENCY | HULL_TYPE | CRAFT_TYPE | etc.
+  code          String                             // Short code or value
+  label         String                             // Display label
+  parentCategory String?                           // For nested references
+  sortOrder     Int      @default(0)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+
+  @@unique([category, code])
+  @@index([category, isActive])
+  @@map("reference_data")
+}

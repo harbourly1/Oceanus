@@ -1,0 +1,33 @@
+{
+  "name": "oceanus",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "typecheck": "turbo typecheck",
+    "db:migrate": "cd apps/api && npx prisma migrate dev",
+    "db:seed": "cd apps/api && npx prisma db seed",
+    "db:studio": "cd apps/api && npx prisma studio",
+    "db:reset": "cd apps/api && npx prisma migrate reset --force",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "clean": "turbo clean && rm -rf node_modules"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.0",
+    "typescript": "^5.7.0"
+  },
+  "packageManager": "npm@10.9.0",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "lightningcss-win32-x64-msvc": "^1.32.0",
+    "oceanus": "file:"
+  }
+}
