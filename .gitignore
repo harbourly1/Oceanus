@@ -47,6 +47,12 @@ test-upload*
 # misc
 *.tsbuildinfo
 coverage/
+*.png
+
 # Windows device name artifacts
 nul
 apps/web/nul
+
+# vercel
+.vercel
+.vercel-tmp/
