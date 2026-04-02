@@ -26,8 +26,5 @@
   "engines": {
     "node": ">=20.0.0"
   },
-  "dependencies": {
-    "lightningcss-win32-x64-msvc": "^1.32.0",
-    "oceanus": "file:"
-  }
+  "dependencies": {}
 }
