@@ -1,4 +1,4 @@
-FROM node:22-slim AS base
+FROM node:22-slim
 RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 
@@ -14,22 +14,17 @@ COPY apps/api/prisma ./apps/api/prisma
 COPY apps/api/src ./apps/api/src
 
 # Install all dependencies (npm workspaces resolves @oceanus/shared)
-RUN npm install --ignore-scripts
+RUN npm install
+
+# Generate Prisma client
 RUN cd apps/api && npx prisma generate
 
 # Build shared package first, then API
 RUN cd packages/shared && npm run build
 RUN cd apps/api && npm run build
 
-# Production stage
-FROM node:22-slim AS production
-RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
-WORKDIR /app
-
-COPY --from=base /app/package.json /app/package-lock.json /app/turbo.json ./
-COPY --from=base /app/node_modules ./node_modules
-COPY --from=base /app/packages/shared ./packages/shared
-COPY --from=base /app/apps/api ./apps/api
+# Verify dist exists
+RUN ls -la apps/api/dist/
 
 WORKDIR /app/apps/api
 
