@@ -22,11 +22,12 @@ RUN cd apps/api && npx prisma generate
 # Build shared package
 RUN cd packages/shared && npx tsc
 
-# Build API using tsc directly (nest build has workspace resolution issues)
-RUN cd apps/api && npx tsc -p tsconfig.json
-
-# Verify dist output exists
-RUN ls apps/api/dist/main.js
+# Build API - use explicit working directory approach
+WORKDIR /app/apps/api
+RUN node ../../node_modules/.bin/tsc -p tsconfig.json || true
+RUN find /app -name "main.js" -path "*/dist/*" 2>/dev/null; ls -la dist/ 2>/dev/null || echo "no dist dir"
+RUN node ../../node_modules/.bin/nest build
+RUN ls -la dist/ && ls dist/main.js
 
 WORKDIR /app/apps/api
 
