@@ -8,19 +8,12 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
-import { v4 as uuidv4 } from 'uuid';
-import { extname } from 'path';
+import { memoryStorage } from 'multer';
 import { ApiConsumes, ApiTags, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { StorageService } from '../storage/storage.service';
 
-const storage = diskStorage({
-  destination: './uploads/documents',
-  filename: (_req, file, cb) => {
-    const uniqueName = `${uuidv4()}${extname(file.originalname)}`;
-    cb(null, uniqueName);
-  },
-});
+const storage = memoryStorage();
 
 const fileFilter = (_req: any, file: Express.Multer.File, cb: any) => {
   const allowedMimes = [
@@ -41,6 +34,8 @@ const fileFilter = (_req: any, file: Express.Multer.File, cb: any) => {
 @UseGuards(JwtAuthGuard)
 @Controller('uploads')
 export class UploadsController {
+  constructor(private readonly storageService: StorageService) {}
+
   @Post('document')
   @UseInterceptors(FileInterceptor('file', {
     storage,
@@ -51,12 +46,7 @@ export class UploadsController {
   @ApiOperation({ summary: 'Upload a single document (PDF/Image)' })
   async uploadDocument(@UploadedFile() file: Express.Multer.File) {
     if (!file) throw new BadRequestException('File is required');
-    return {
-      url: `/uploads/documents/${file.filename}`,
-      originalName: file.originalname,
-      mimeType: file.mimetype,
-      size: file.size,
-    };
+    return this.storageService.upload(file, 'documents');
   }
 
   @Post('documents')
@@ -69,11 +59,6 @@ export class UploadsController {
   @ApiOperation({ summary: 'Upload multiple documents (PDF/Image, max 10)' })
   async uploadDocuments(@UploadedFiles() files: Express.Multer.File[]) {
     if (!files?.length) throw new BadRequestException('At least one file is required');
-    return files.map(file => ({
-      url: `/uploads/documents/${file.filename}`,
-      originalName: file.originalname,
-      mimeType: file.mimetype,
-      size: file.size,
-    }));
+    return Promise.all(files.map(f => this.storageService.upload(f, 'documents')));
   }
 }

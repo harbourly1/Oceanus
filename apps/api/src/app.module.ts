@@ -23,12 +23,14 @@ import { ProductCatalogModule } from './product-catalog/product-catalog.module';
 import { InsurersModule } from './insurers/insurers.module';
 import { ReferenceDataModule } from './reference-data/reference-data.module';
 import { QuoteEngineModule } from './quote-engine/quote-engine.module';
+import { StorageModule } from './storage/storage.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     ScheduleModule.forRoot(),
     PrismaModule,
+    StorageModule,
     AuthModule,
     UsersModule,
     LeadsModule,

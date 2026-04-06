@@ -10,15 +10,17 @@ import { Public } from '../auth/decorators/public.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { LeadsService } from './leads.service';
-import { diskStorage } from 'multer';
-import { extname } from 'path';
-import { v4 as uuidv4 } from 'uuid';
+import { memoryStorage } from 'multer';
+import { StorageService } from '../storage/storage.service';
 
 @ApiTags('Leads')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('leads')
 export class LeadsController {
-  constructor(private leadsService: LeadsService) {}
+  constructor(
+    private leadsService: LeadsService,
+    private storageService: StorageService,
+  ) {}
 
   @Public()
   @Post()
@@ -195,13 +197,7 @@ export class LeadsController {
   @Public()
   @Post(':id/documents')
   @UseInterceptors(FileInterceptor('file', {
-    storage: diskStorage({
-      destination: './uploads/leads',
-      filename: (_req, file, cb) => {
-        const uniqueName = `${uuidv4()}${extname(file.originalname)}`;
-        cb(null, uniqueName);
-      },
-    }),
+    storage: memoryStorage(),
     limits: { fileSize: 10 * 1024 * 1024 },
   }))
   @ApiConsumes('multipart/form-data')
@@ -210,11 +206,13 @@ export class LeadsController {
     @Param('id') leadId: string,
     @UploadedFile() file: Express.Multer.File,
   ) {
+    const uploaded = await this.storageService.upload(file, 'leads');
     return this.leadsService.uploadDocument(leadId, {
       originalname: file.originalname,
       mimetype: file.mimetype,
       size: file.size,
-      filename: file.filename,
+      filename: uploaded.key,
+      url: uploaded.url,
     });
   }
 

@@ -23,8 +23,7 @@ import {
   TASK_RESPONSE_CONFIG,
   TaskResponseType,
 } from '@oceanus/shared';
-import * as fs from 'fs';
-import * as path from 'path';
+
 
 @Injectable()
 export class LeadsService {
@@ -455,17 +454,12 @@ export class LeadsService {
     return { total: allLeads.length, byStatus, bySource, byTemperature };
   }
 
-  async uploadDocument(leadId: string, file: { originalname: string; mimetype: string; size: number; filename: string }) {
+  async uploadDocument(leadId: string, file: { originalname: string; mimetype: string; size: number; filename: string; url: string }) {
     const lead = await this.prisma.lead.findUnique({
       where: { id: leadId },
       include: { documents: true },
     });
     if (!lead) throw new NotFoundException('Lead not found');
-
-    const uploadsDir = path.join(process.cwd(), 'uploads', 'leads');
-    if (!fs.existsSync(uploadsDir)) {
-      fs.mkdirSync(uploadsDir, { recursive: true });
-    }
 
     const doc = await this.prisma.leadDocument.create({
       data: {
@@ -474,7 +468,7 @@ export class LeadsService {
         originalName: file.originalname,
         mimeType: file.mimetype,
         size: file.size,
-        url: `/uploads/leads/${file.filename}`,
+        url: file.url,
       },
     });
 
