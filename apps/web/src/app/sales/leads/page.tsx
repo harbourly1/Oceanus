@@ -63,6 +63,7 @@ export default function LeadsTasksPage() {
 
   // Filter state
   const [scope, setScope] = useState<'mine' | 'all'>('mine');
+  const [viewMode, setViewMode] = useState<'leads' | 'tasks'>('leads');
   const [timePeriod, setTimePeriod] = useState<string>('all');
   const [dueDateFrom, setDueDateFrom] = useState('');
   const [dueDateTo, setDueDateTo] = useState('');
@@ -101,9 +102,8 @@ export default function LeadsTasksPage() {
   const leadsFallback = useLeads(leadQueryParams);
   const { data: dashData } = useDashboard();
 
-  // Determine which data to show
-  const hasTaskData = tasksList.data?.data && tasksList.data.data.length > 0;
-  const showTasksView = hasTaskData || timePeriod !== 'all' || dueDateFrom || dueDateTo;
+  // Determine which data to show based on user-selected view mode
+  const showTasksView = viewMode === 'tasks';
 
   const tasksData = tasksList.data?.data || [];
   const tasksMeta = tasksList.data?.meta;
@@ -289,7 +289,21 @@ export default function LeadsTasksPage() {
     <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold" style={{ color: 'var(--color-text-primary)' }}>Leads & Tasks</h1>
+        <div className="flex items-center gap-4">
+          <h1 className="text-xl font-bold" style={{ color: 'var(--color-text-primary)' }}>Leads & Tasks</h1>
+          <div className="flex rounded-lg overflow-hidden" style={{ border: '1px solid var(--color-border-default)' }}>
+            <button onClick={() => { setViewMode('leads'); setPage(1); }}
+              className="px-3 py-1 text-xs font-medium transition-colors"
+              style={{ background: viewMode === 'leads' ? 'var(--color-accent-blue, #3b82f6)' : 'var(--color-bg-surface)', color: viewMode === 'leads' ? '#fff' : 'var(--color-text-secondary)' }}>
+              Leads
+            </button>
+            <button onClick={() => { setViewMode('tasks'); setPage(1); }}
+              className="px-3 py-1 text-xs font-medium transition-colors"
+              style={{ background: viewMode === 'tasks' ? 'var(--color-accent-blue, #3b82f6)' : 'var(--color-bg-surface)', color: viewMode === 'tasks' ? '#fff' : 'var(--color-text-secondary)' }}>
+              Tasks
+            </button>
+          </div>
+        </div>
         <div className="flex items-center gap-3">
           {canCreate && (
             <Button size="sm" onClick={() => setShowCreate(true)}>+ Create Lead</Button>
@@ -339,7 +353,8 @@ export default function LeadsTasksPage() {
           </div>
         )}
 
-        {/* Date Range */}
+        {/* Date Range - tasks view only */}
+        {showTasksView && (
         <div className="flex items-center gap-2">
           <input
             type="date"
@@ -359,6 +374,7 @@ export default function LeadsTasksPage() {
             placeholder="End date"
           />
         </div>
+        )}
 
         {/* Search */}
         <div className="flex-1 min-w-[200px] max-w-[300px]">
@@ -374,12 +390,15 @@ export default function LeadsTasksPage() {
         <Button size="sm" variant="secondary" onClick={handleReset}>Reset</Button>
       </div>
 
-      {/* Note */}
+      {/* Note - tasks view only */}
+      {showTasksView && (
       <p className="text-xs italic" style={{ color: 'var(--color-accent-red)' }}>
         Please Note: The below task count is for <strong>OPEN</strong> tasks only
       </p>
+      )}
 
-      {/* Time-based Tabs */}
+      {/* Time-based Tabs - tasks view only */}
+      {showTasksView && (
       <div className="flex items-center gap-1 flex-wrap">
         {TIME_TABS.map((tab) => {
           const count = stats[tab.key as keyof typeof stats] ?? 0;
@@ -399,6 +418,7 @@ export default function LeadsTasksPage() {
           );
         })}
       </div>
+      )}
 
       {/* Results info bar */}
       <div className="flex items-center justify-between">
