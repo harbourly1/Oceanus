@@ -62,7 +62,7 @@ export class LeadsService {
     language?: string;
     source?: string;
     status?: string;
-  }) {
+  }, createdById?: string) {
     if (!data.fullName || !data.email || !data.productType) {
       throw new BadRequestException('fullName, email, and productType are required');
     }
@@ -108,6 +108,7 @@ export class LeadsService {
         language: data.language || 'en',
         source: data.source || 'web',
         status: data.status || 'new',
+        assignedToId: createdById || null,
         lastActivityAt: now,
       },
     });
@@ -128,7 +129,13 @@ export class LeadsService {
       data: { score },
     });
 
-    // Trigger auto-allocation (non-blocking)
+    // Self-assigned by logged-in Sales Exec — skip allocation pools
+    if (createdById) {
+      this.logger.log(`Lead ${lead.ref} self-assigned to creator ${createdById}`);
+      return { lead_id: lead.id, lead_ref: lead.ref, score, allocation: { assigned: true, agentId: createdById, reason: 'Self-assigned by creator' } };
+    }
+
+    // Trigger auto-allocation for public/web leads (non-blocking)
     let allocationResult = null;
     try {
       allocationResult = await this.allocationService.allocateLead(lead.id);

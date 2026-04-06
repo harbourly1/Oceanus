@@ -45,6 +45,34 @@ export class LeadsController {
     return this.leadsService.create(body);
   }
 
+  @Post('portal')
+  @Roles('SALES_EXEC', 'SALES_ADMIN', 'ADMIN')
+  @ApiOperation({ summary: 'Create a lead from portal (self-assigns to creator for SALES_EXEC)' })
+  async createFromPortal(
+    @CurrentUser('id') userId: string,
+    @CurrentUser('role') userRole: string,
+    @Body() body: {
+      productType: string;
+      formData: any;
+      quotesData?: any;
+      selectedQuote?: any;
+      fullName: string;
+      email: string;
+      phone?: string;
+      company?: string;
+      nationality?: string;
+      residence?: string;
+      contactPref?: string;
+      currency?: string;
+      language?: string;
+      source?: string;
+      status?: string;
+    },
+  ) {
+    const selfAssignId = userRole === 'SALES_EXEC' ? userId : undefined;
+    return this.leadsService.create(body, selfAssignId);
+  }
+
   @Get('stats')
   @Roles('SALES_EXEC', 'SALES_ADMIN', 'ADMIN')
   @ApiOperation({ summary: 'Get lead statistics' })

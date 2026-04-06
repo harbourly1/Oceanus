@@ -80,7 +80,7 @@ export function useCreateLead() {
       source: string;
       language?: string;
       formData?: Record<string, any>;
-    }) => api.post('/leads', data, { token }),
+    }) => api.post('/leads/portal', data, { token }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['leads'] });
       qc.invalidateQueries({ queryKey: ['lead-stats'] });
