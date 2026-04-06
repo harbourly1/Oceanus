@@ -4,7 +4,7 @@ import { useState, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
-  useCustomerDetail, useCreateEndorsement, useCreateInvoice, useUpdatePolicy, useUpdateEndorsement, useUploadFile, useUpdateCustomer,
+  useCustomerDetail, useCreateEndorsement, useCreateInvoice, useCreatePolicy, useUpdatePolicy, useUpdateEndorsement, useUploadFile, useUpdateCustomer, useAdminInsurers, useAdminProducts,
 } from '@/hooks/use-api';
 import { useCurrentUser } from '@/hooks/use-auth';
 import { Card, CardHeader, Button, Badge, Tabs, Modal, LoadingState, ErrorState } from '@/components/ui';
@@ -222,11 +222,14 @@ export default function CustomerDetailPage() {
   const { data: customer, isLoading, error, refetch } = useCustomerDetail(id);
   const createEndorsement = useCreateEndorsement();
   const createInvoice = useCreateInvoice();
+  const createPolicy = useCreatePolicy();
   const updatePolicy = useUpdatePolicy();
   const updateEndorsement = useUpdateEndorsement();
   const updateCustomer = useUpdateCustomer();
   const uploadFile = useUploadFile();
   const user = useCurrentUser();
+  const { data: insurersList } = useAdminInsurers();
+  const { data: productsList } = useAdminProducts();
 
   const canEdit = !!user && ['UNDERWRITER', 'UW_MANAGER', 'ADMIN'].includes(user.role);
   const canEditCustomer = !!user && ['SALES_EXEC', 'SALES_ADMIN', 'ADMIN'].includes(user.role);
@@ -239,6 +242,13 @@ export default function CustomerDetailPage() {
   });
   const [endorsementModal, setEndorsementModal] = useState<string | null>(null);
   const [invoiceModal, setInvoiceModal] = useState(false);
+  const [policyModal, setPolicyModal] = useState(false);
+
+  // Create Policy form state
+  const [policyForm, setPolicyForm] = useState({
+    insurer: '', product: '', premium: '', sumInsured: '',
+    commission: '', commissionRate: '', startDate: '', endDate: '',
+  });
 
   // Endorsement form state
   const [endorsementForm, setEndorsementForm] = useState({
@@ -306,6 +316,30 @@ export default function CustomerDetailPage() {
       refetch();
     } catch (e: any) {
       alert(e?.message || 'Failed to update customer');
+    }
+  };
+
+  const handleCreatePolicy = async () => {
+    if (!policyForm.insurer || !policyForm.product || !policyForm.premium || !policyForm.sumInsured || !policyForm.startDate || !policyForm.endDate) {
+      alert('Please fill all required fields'); return;
+    }
+    try {
+      await createPolicy.mutateAsync({
+        customerIdId: customer.id,
+        insurer: policyForm.insurer,
+        product: policyForm.product,
+        premium: parseFloat(policyForm.premium),
+        sumInsured: parseFloat(policyForm.sumInsured),
+        commission: policyForm.commission ? parseFloat(policyForm.commission) : undefined,
+        commissionRate: policyForm.commissionRate ? parseFloat(policyForm.commissionRate) : undefined,
+        startDate: policyForm.startDate,
+        endDate: policyForm.endDate,
+      });
+      setPolicyModal(false);
+      setPolicyForm({ insurer: '', product: '', premium: '', sumInsured: '', commission: '', commissionRate: '', startDate: '', endDate: '' });
+      refetch();
+    } catch (e: any) {
+      alert(e?.message || 'Failed to create policy');
     }
   };
 
@@ -557,7 +591,13 @@ export default function CustomerDetailPage() {
           ) : (
             <Card>
               <CardHeader title="Policy" />
-              <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>No policy created yet</p>
+              <p className="text-xs mb-3" style={{ color: 'var(--color-text-muted)' }}>No policy created yet</p>
+              {canEditCustomer && (
+                <Button size="sm" onClick={() => {
+                  setPolicyForm(f => ({ ...f, product: customer.lead?.productType || '' }));
+                  setPolicyModal(true);
+                }}>Create Policy</Button>
+              )}
             </Card>
           )}
         </div>
@@ -738,6 +778,89 @@ export default function CustomerDetailPage() {
             <Button size="sm" loading={createInvoice.isPending} onClick={handleCreateInvoice}
               disabled={!invoiceForm.amount}>
               Create Invoice
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Create Policy Modal */}
+      <Modal open={policyModal} onClose={() => setPolicyModal(false)} title="Create Policy" width="520px">
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>Insurer *</label>
+              <select className="w-full px-3 py-2 rounded-lg text-sm"
+                style={{ background: 'var(--color-bg-hover)', border: '1px solid var(--color-border-default)', color: 'var(--color-text-primary)' }}
+                value={policyForm.insurer} onChange={e => setPolicyForm(f => ({ ...f, insurer: e.target.value }))}>
+                <option value="">Select insurer...</option>
+                {Array.isArray(insurersList) && insurersList.map((ins: any) => (
+                  <option key={ins.id} value={ins.name}>{ins.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>Product *</label>
+              <select className="w-full px-3 py-2 rounded-lg text-sm"
+                style={{ background: 'var(--color-bg-hover)', border: '1px solid var(--color-border-default)', color: 'var(--color-text-primary)' }}
+                value={policyForm.product} onChange={e => setPolicyForm(f => ({ ...f, product: e.target.value }))}>
+                <option value="">Select product...</option>
+                {Array.isArray(productsList) && productsList.map((p: any) => (
+                  <option key={p.id} value={p.code}>{p.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>Premium (AED) *</label>
+              <input type="number" className="w-full px-3 py-2 rounded-lg text-sm"
+                style={{ background: 'var(--color-bg-hover)', border: '1px solid var(--color-border-default)', color: 'var(--color-text-primary)' }}
+                value={policyForm.premium} onChange={e => setPolicyForm(f => ({ ...f, premium: e.target.value }))}
+                placeholder="0.00" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>Sum Insured (AED) *</label>
+              <input type="number" className="w-full px-3 py-2 rounded-lg text-sm"
+                style={{ background: 'var(--color-bg-hover)', border: '1px solid var(--color-border-default)', color: 'var(--color-text-primary)' }}
+                value={policyForm.sumInsured} onChange={e => setPolicyForm(f => ({ ...f, sumInsured: e.target.value }))}
+                placeholder="0.00" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>Commission (AED)</label>
+              <input type="number" className="w-full px-3 py-2 rounded-lg text-sm"
+                style={{ background: 'var(--color-bg-hover)', border: '1px solid var(--color-border-default)', color: 'var(--color-text-primary)' }}
+                value={policyForm.commission} onChange={e => setPolicyForm(f => ({ ...f, commission: e.target.value }))}
+                placeholder="0.00" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>Commission Rate (%)</label>
+              <input type="number" className="w-full px-3 py-2 rounded-lg text-sm" step="0.01"
+                style={{ background: 'var(--color-bg-hover)', border: '1px solid var(--color-border-default)', color: 'var(--color-text-primary)' }}
+                value={policyForm.commissionRate} onChange={e => setPolicyForm(f => ({ ...f, commissionRate: e.target.value }))}
+                placeholder="0.00" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>Start Date *</label>
+              <input type="date" className="w-full px-3 py-2 rounded-lg text-sm"
+                style={{ background: 'var(--color-bg-hover)', border: '1px solid var(--color-border-default)', color: 'var(--color-text-primary)' }}
+                value={policyForm.startDate} onChange={e => setPolicyForm(f => ({ ...f, startDate: e.target.value }))} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>End Date *</label>
+              <input type="date" className="w-full px-3 py-2 rounded-lg text-sm"
+                style={{ background: 'var(--color-bg-hover)', border: '1px solid var(--color-border-default)', color: 'var(--color-text-primary)' }}
+                value={policyForm.endDate} onChange={e => setPolicyForm(f => ({ ...f, endDate: e.target.value }))} />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="secondary" size="sm" onClick={() => setPolicyModal(false)}>Cancel</Button>
+            <Button size="sm" loading={createPolicy.isPending} onClick={handleCreatePolicy}
+              disabled={!policyForm.insurer || !policyForm.product || !policyForm.premium || !policyForm.sumInsured || !policyForm.startDate || !policyForm.endDate}>
+              Create Policy
             </Button>
           </div>
         </div>
