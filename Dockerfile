@@ -17,20 +17,17 @@ COPY apps/api/src ./apps/api/src
 RUN npm install
 
 # Generate Prisma client
-RUN cd apps/api && npx prisma generate
+WORKDIR /app/apps/api
+RUN npx prisma generate
 
 # Build shared package
-RUN cd packages/shared && npx tsc
+WORKDIR /app/packages/shared
+RUN npx tsc
 
-# Build API - use explicit working directory approach
+# Build API (tsc outputs to dist/src/ due to include having both src/ and prisma/)
 WORKDIR /app/apps/api
-RUN node ../../node_modules/.bin/tsc -p tsconfig.json || true
-RUN find /app -name "main.js" -path "*/dist/*" 2>/dev/null; ls -la dist/ 2>/dev/null || echo "no dist dir"
-RUN node ../../node_modules/.bin/nest build
-RUN ls -la dist/ && ls dist/main.js
-
-WORKDIR /app/apps/api
+RUN npx tsc -p tsconfig.json
 
 EXPOSE 4000
 
-CMD ["node", "dist/main"]
+CMD ["node", "dist/src/main"]
