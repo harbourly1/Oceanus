@@ -3,7 +3,7 @@ node_modules
 dist
 *.db
 *.db-journal
-uploads
+apps/api/uploads
 .git
 .vercel
 .vercel-tmp
