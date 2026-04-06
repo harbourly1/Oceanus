@@ -27,7 +27,7 @@ export class ProductCatalogController {
 
   @Get('products')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('ADMIN', 'SALES_ADMIN', 'SALES_EXEC', 'UNDERWRITER', 'ACCOUNTS')
   @ApiOperation({ summary: 'List all products' })
   async listProducts(@Query('active') active?: string) {
     return this.catalogService.findAllProducts(active !== 'false');

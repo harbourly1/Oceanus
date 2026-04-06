@@ -38,7 +38,7 @@ export default function LeadDetailPage() {
   const transitionLead = useUpdateLeadStatus();
   const assignLead = useAssignLead();
   const { data: agentsData } = useUsers('SALES_EXEC');
-  const { data: assignmentLogsData } = useAllocationLogs({ leadId: id });
+  const { data: assignmentLogsData } = useAllocationLogs({ leadId: id }, currentUser?.role === 'ADMIN' || currentUser?.role === 'SALES_ADMIN');
   const { data: customersData } = useCustomersByLead(id);
   const updateLead = useUpdateLead();
   const productConfigMap = useProductConfigMap();

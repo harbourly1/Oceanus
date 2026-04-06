@@ -817,13 +817,13 @@ export function useDeleteAllocationPool() {
   });
 }
 
-export function useAllocationLogs(params?: Record<string, string>) {
+export function useAllocationLogs(params?: Record<string, string>, enabled = true) {
   const token = useToken();
   const searchParams = new URLSearchParams(params).toString();
   return useQuery({
     queryKey: ['allocation-logs', params],
     queryFn: () => api.get<any>(`/allocation/logs?${searchParams}`, { token }),
-    enabled: !!token,
+    enabled: !!token && enabled,
   });
 }
 
