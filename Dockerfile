@@ -12,6 +12,7 @@ COPY packages/shared/src ./packages/shared/src
 COPY apps/api/package.json apps/api/tsconfig.json apps/api/nest-cli.json ./apps/api/
 COPY apps/api/prisma ./apps/api/prisma
 COPY apps/api/src ./apps/api/src
+COPY apps/api/start.sh ./apps/api/start.sh
 
 # Install all dependencies (npm workspaces resolves @oceanus/shared)
 RUN npm install
@@ -27,7 +28,8 @@ RUN npx tsc
 # Build API (tsc outputs to dist/src/ due to include having both src/ and prisma/)
 WORKDIR /app/apps/api
 RUN npx tsc -p tsconfig.json
+RUN chmod +x start.sh
 
 EXPOSE 4000
 
-CMD ["node", "dist/src/main"]
+CMD ["sh", "start.sh"]
