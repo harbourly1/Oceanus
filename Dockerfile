@@ -19,12 +19,14 @@ RUN npm install
 # Generate Prisma client
 RUN cd apps/api && npx prisma generate
 
-# Build shared package first, then API
-RUN cd packages/shared && npm run build
-RUN cd apps/api && npm run build
+# Build shared package
+RUN cd packages/shared && npx tsc
 
-# Verify dist exists
-RUN ls -la apps/api/dist/
+# Build API using tsc directly (nest build has workspace resolution issues)
+RUN cd apps/api && npx tsc -p tsconfig.json
+
+# Verify dist output exists
+RUN ls apps/api/dist/main.js
 
 WORKDIR /app/apps/api
 
