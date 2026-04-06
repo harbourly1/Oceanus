@@ -37,8 +37,8 @@ apps/api/prisma/migrations/**/migration_lock.toml
 *.db
 *.db-journal
 
-# uploads (runtime generated)
-uploads/
+# uploads (runtime generated - not source code)
+/uploads/
 apps/api/uploads/
 
 # test artifacts
