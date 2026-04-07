@@ -17,14 +17,14 @@ export class InsurersController {
   ) {}
 
   @Get()
-  @Roles('ADMIN')
+  @Roles('ADMIN', 'SALES_ADMIN', 'SALES_EXEC', 'UNDERWRITER', 'ACCOUNTS')
   @ApiOperation({ summary: 'List all insurers' })
   async findAll(@Query('active') active?: string) {
     return this.insurersService.findAll(active !== 'false');
   }
 
   @Get(':id')
-  @Roles('ADMIN')
+  @Roles('ADMIN', 'UNDERWRITER')
   @ApiOperation({ summary: 'Get insurer with rates and commissions' })
   async findOne(@Param('id') id: string) {
     return this.insurersService.findById(id);
