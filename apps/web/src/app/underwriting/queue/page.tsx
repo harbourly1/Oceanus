@@ -159,7 +159,7 @@ export default function UwQueuePage() {
             <table className="w-full text-left">
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--color-border-default)' }}>
-                  {['Type', 'Customer', 'Policy/Endorsement', 'Product', 'Assigned To', 'Assigned Date', 'Actions'].map(h => (
+                  {['Type', 'Customer', 'Ref', 'Product', 'Assigned To', 'Assigned Date', 'Actions'].map(h => (
                     <th key={h} className="px-4 py-3 text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>{h}</th>
                   ))}
                 </tr>
@@ -167,15 +167,22 @@ export default function UwQueuePage() {
               <tbody>
                 {items.map((item: any) => {
                   const isPolicy = !!item.policy;
-                  const customerName = isPolicy
+                  const isInvoiceBased = !!item.invoice && !item.policy;
+                  const customerName = isInvoiceBased
+                    ? item.customer?.customerName || item.invoice?.customerId?.customerName
+                    : isPolicy
                     ? item.policy?.customerId?.customerName
                     : item.endorsement?.customerId?.customerName;
-                  const customerId = isPolicy
+                  const customerId = isInvoiceBased
+                    ? item.customer?.id || item.invoice?.customerId?.id
+                    : isPolicy
                     ? item.policy?.customerId?.id
                     : item.endorsement?.customerId?.id;
-                  const ref = isPolicy ? item.policy?.ref : item.endorsement?.ref;
-                  const product = isPolicy ? item.policy?.product : item.endorsement?.policy?.product;
-                  const lead = isPolicy
+                  const ref = isInvoiceBased ? item.invoice?.invoiceNumber : isPolicy ? item.policy?.ref : item.endorsement?.ref;
+                  const product = isInvoiceBased ? (item.customer?.lead?.productType || '-') : isPolicy ? item.policy?.product : item.endorsement?.policy?.product;
+                  const lead = isInvoiceBased
+                    ? item.customer?.lead || item.invoice?.customerId?.lead
+                    : isPolicy
                     ? item.policy?.customerId?.lead
                     : item.endorsement?.customerId?.lead;
                   const isExpanded = expandedId === item.id;
@@ -185,9 +192,9 @@ export default function UwQueuePage() {
                       <tr key={item.id} style={{ borderBottom: isExpanded ? 'none' : '1px solid var(--color-border-default)' }}>
                         <td className="px-4 py-3">
                           <Badge
-                            label={isPolicy ? 'Policy Issuance' : `${item.endorsement?.type || 'Endorsement'}`}
-                            color={isPolicy ? 'var(--color-accent-blue)' : 'var(--color-accent-purple)'}
-                            bg={isPolicy ? 'rgba(59,130,246,0.12)' : 'rgba(139,92,246,0.12)'}
+                            label={isInvoiceBased ? 'New Policy' : isPolicy ? 'Policy Issuance' : `${item.endorsement?.type || 'Endorsement'}`}
+                            color={isInvoiceBased ? '#10b981' : isPolicy ? 'var(--color-accent-blue)' : 'var(--color-accent-purple)'}
+                            bg={isInvoiceBased ? 'rgba(16,185,129,0.12)' : isPolicy ? 'rgba(59,130,246,0.12)' : 'rgba(139,92,246,0.12)'}
                           />
                         </td>
                         <td className="px-4 py-3">

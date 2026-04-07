@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef } from 'react';
-import { useUwQueue, useCompleteUwAssignment, useReturnUwAssignment, useUploadFile, useProductConfigMap } from '@/hooks/use-api';
+import { useUwQueue, useCompleteUwAssignment, useReturnUwAssignment, useUploadFile, useProductConfigMap, useAdminInsurers, useAdminProducts } from '@/hooks/use-api';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -91,15 +91,27 @@ export default function UwInProgressPage() {
   const returnAssignment = useReturnUwAssignment();
   const uploadFile = useUploadFile();
   const productConfigMap = useProductConfigMap();
+  const { data: insurersList } = useAdminInsurers();
+  const { data: productsList } = useAdminProducts();
 
   const [completeModal, setCompleteModal] = useState<any>(null);
   const [returnModal, setReturnModal] = useState<string | null>(null);
   const [returnNotes, setReturnNotes] = useState('');
 
-  // Policy issuance form
+  // Policy issuance form (existing policy flow)
   const [policyForm, setPolicyForm] = useState({
     policyNumber: '', policyHolderName: '', premiumCharged: '',
     startDate: '', endDate: '', sumInsured: '',
+    debitNoteNumber: '', debitNoteAmount: '', creditNoteNumber: '', creditNoteAmount: '',
+    notes: '',
+  });
+
+  // New policy creation form (invoice-based flow — UW fills everything)
+  const [newPolicyForm, setNewPolicyForm] = useState({
+    insurer: '', product: '', premium: '', sumInsured: '',
+    commission: '', commissionRate: '',
+    policyNumber: '', policyHolderName: '', premiumCharged: '',
+    startDate: '', endDate: '',
     debitNoteNumber: '', debitNoteAmount: '', creditNoteNumber: '', creditNoteAmount: '',
     notes: '',
   });
@@ -145,9 +157,35 @@ export default function UwInProgressPage() {
   const handleComplete = async () => {
     if (!completeModal) return;
     const isPolicy = !!completeModal.policy;
+    const isInvoiceBased = !!completeModal.invoice && !completeModal.policy;
 
     try {
-      if (isPolicy) {
+      if (isInvoiceBased) {
+        // New flow: UW creates policy from invoice-based assignment
+        await completeAssignment.mutateAsync({
+          id: completeModal.id,
+          insurer: newPolicyForm.insurer || undefined,
+          product: newPolicyForm.product || undefined,
+          premium: newPolicyForm.premium ? parseFloat(newPolicyForm.premium) : undefined,
+          sumInsured: newPolicyForm.sumInsured ? parseFloat(newPolicyForm.sumInsured) : undefined,
+          commission: newPolicyForm.commission ? parseFloat(newPolicyForm.commission) : undefined,
+          commissionRate: newPolicyForm.commissionRate ? parseFloat(newPolicyForm.commissionRate) : undefined,
+          policyNumber: newPolicyForm.policyNumber || undefined,
+          policyHolderName: newPolicyForm.policyHolderName || undefined,
+          premiumCharged: newPolicyForm.premiumCharged ? parseFloat(newPolicyForm.premiumCharged) : undefined,
+          startDate: newPolicyForm.startDate || undefined,
+          endDate: newPolicyForm.endDate || undefined,
+          debitNoteNumber: newPolicyForm.debitNoteNumber || undefined,
+          debitNoteAmount: newPolicyForm.debitNoteAmount ? parseFloat(newPolicyForm.debitNoteAmount) : undefined,
+          creditNoteNumber: newPolicyForm.creditNoteNumber || undefined,
+          creditNoteAmount: newPolicyForm.creditNoteAmount ? parseFloat(newPolicyForm.creditNoteAmount) : undefined,
+          policyDocument: policyDocs.policyDocument || undefined,
+          policySchedule: policyDocs.policySchedule || undefined,
+          debitNotePath: policyDocs.debitNotePath || undefined,
+          creditNotePath: policyDocs.creditNotePath || undefined,
+          notes: newPolicyForm.notes || undefined,
+        });
+      } else if (isPolicy) {
         await completeAssignment.mutateAsync({
           id: completeModal.id,
           policyNumber: policyForm.policyNumber || undefined,
@@ -187,6 +225,7 @@ export default function UwInProgressPage() {
       }
       setCompleteModal(null);
       setPolicyForm({ policyNumber: '', policyHolderName: '', premiumCharged: '', startDate: '', endDate: '', sumInsured: '', debitNoteNumber: '', debitNoteAmount: '', creditNoteNumber: '', creditNoteAmount: '', notes: '' });
+      setNewPolicyForm({ insurer: '', product: '', premium: '', sumInsured: '', commission: '', commissionRate: '', policyNumber: '', policyHolderName: '', premiumCharged: '', startDate: '', endDate: '', debitNoteNumber: '', debitNoteAmount: '', creditNoteNumber: '', creditNoteAmount: '', notes: '' });
       setPolicyDocs({ policyDocument: null, policySchedule: null, debitNotePath: null, creditNotePath: null });
       setEndorsementForm({ creditNoteNumber: '', creditNoteAmount: '', effectiveDate: '', financialImpact: '', notes: '', debitNoteNumber: '', debitNoteAmount: '', cancellationDate: '' });
       setEndorsementDocs({ creditNotePath: null, cancellationLetterPath: null, refundCalculationPath: null, revisedDocumentPath: null, endorsementCertificatePath: null, debitNotePath: null });
@@ -243,10 +282,19 @@ export default function UwInProgressPage() {
         <div className="space-y-4">
           {items.map((item: any) => {
             const isPolicy = !!item.policy;
-            const customerName = isPolicy ? item.policy?.customerId?.customerName : item.endorsement?.customerId?.customerName;
-            const customerId = isPolicy ? item.policy?.customerId?.id : item.endorsement?.customerId?.id;
-            const ref = isPolicy ? item.policy?.ref : item.endorsement?.ref;
-            const lead = isPolicy ? item.policy?.customerId?.lead : item.endorsement?.customerId?.lead;
+            const isInvoiceBased = !!item.invoice && !item.policy;
+            const customerName = isInvoiceBased
+              ? item.customer?.customerName || item.invoice?.customerId?.customerName
+              : isPolicy ? item.policy?.customerId?.customerName : item.endorsement?.customerId?.customerName;
+            const customerId = isInvoiceBased
+              ? item.customer?.id || item.invoice?.customerId?.id
+              : isPolicy ? item.policy?.customerId?.id : item.endorsement?.customerId?.id;
+            const ref = isInvoiceBased
+              ? item.invoice?.invoiceNumber
+              : isPolicy ? item.policy?.ref : item.endorsement?.ref;
+            const lead = isInvoiceBased
+              ? item.customer?.lead || item.invoice?.customerId?.lead
+              : isPolicy ? item.policy?.customerId?.lead : item.endorsement?.customerId?.lead;
 
             return (
               <Card key={item.id}>
@@ -254,9 +302,9 @@ export default function UwInProgressPage() {
                   <div>
                     <div className="flex items-center gap-2 mb-1">
                       <Badge
-                        label={isPolicy ? 'Policy Issuance' : `${item.endorsement?.type || 'Endorsement'}`}
-                        color={isPolicy ? '#3b82f6' : '#8b5cf6'}
-                        bg={isPolicy ? 'rgba(59,130,246,0.12)' : 'rgba(139,92,246,0.12)'}
+                        label={isInvoiceBased ? 'New Policy' : isPolicy ? 'Policy Issuance' : `${item.endorsement?.type || 'Endorsement'}`}
+                        color={isInvoiceBased ? '#10b981' : isPolicy ? '#3b82f6' : '#8b5cf6'}
+                        bg={isInvoiceBased ? 'rgba(16,185,129,0.12)' : isPolicy ? 'rgba(59,130,246,0.12)' : 'rgba(139,92,246,0.12)'}
                       />
                       <span className="text-xs font-medium" style={{ color: 'var(--color-text-primary)' }}>{ref}</span>
                     </div>
@@ -279,6 +327,129 @@ export default function UwInProgressPage() {
           })}
         </div>
       )}
+
+      {/* Complete Modal - New Policy (invoice-based) */}
+      <Modal open={!!completeModal && !!completeModal?.invoice && !completeModal?.policy} onClose={() => setCompleteModal(null)}
+        title="Create Policy" width="700px">
+        <div className="space-y-4" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
+          <p className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+            Create the policy for this approved invoice. Fill in all policy details below.
+          </p>
+
+          {/* Insurer & Product */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>Insurer *</label>
+              <select className="w-full px-3 py-2 rounded-lg text-sm"
+                style={{ background: 'var(--color-bg-hover)', border: '1px solid var(--color-border-default)', color: 'var(--color-text-primary)' }}
+                value={newPolicyForm.insurer} onChange={e => setNewPolicyForm(f => ({ ...f, insurer: e.target.value }))}>
+                <option value="">Select insurer...</option>
+                {Array.isArray(insurersList) && insurersList.map((ins: any) => (
+                  <option key={ins.id} value={ins.name}>{ins.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>Product *</label>
+              <select className="w-full px-3 py-2 rounded-lg text-sm"
+                style={{ background: 'var(--color-bg-hover)', border: '1px solid var(--color-border-default)', color: 'var(--color-text-primary)' }}
+                value={newPolicyForm.product} onChange={e => setNewPolicyForm(f => ({ ...f, product: e.target.value }))}>
+                <option value="">Select product...</option>
+                {Array.isArray(productsList) && productsList.map((p: any) => (
+                  <option key={p.id} value={p.code}>{p.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Premium & Sum Insured */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>Premium (AED) *</label>
+              <input type="number" className="w-full px-3 py-2 rounded-lg text-sm"
+                style={{ background: 'var(--color-bg-hover)', border: '1px solid var(--color-border-default)', color: 'var(--color-text-primary)' }}
+                value={newPolicyForm.premium} onChange={e => setNewPolicyForm(f => ({ ...f, premium: e.target.value }))} placeholder="0.00" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>Sum Insured (AED) *</label>
+              <input type="number" className="w-full px-3 py-2 rounded-lg text-sm"
+                style={{ background: 'var(--color-bg-hover)', border: '1px solid var(--color-border-default)', color: 'var(--color-text-primary)' }}
+                value={newPolicyForm.sumInsured} onChange={e => setNewPolicyForm(f => ({ ...f, sumInsured: e.target.value }))} placeholder="0.00" />
+            </div>
+          </div>
+
+          {/* Commission */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>Commission (AED)</label>
+              <input type="number" className="w-full px-3 py-2 rounded-lg text-sm"
+                style={{ background: 'var(--color-bg-hover)', border: '1px solid var(--color-border-default)', color: 'var(--color-text-primary)' }}
+                value={newPolicyForm.commission} onChange={e => setNewPolicyForm(f => ({ ...f, commission: e.target.value }))} placeholder="0.00" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>Commission Rate (%)</label>
+              <input type="number" className="w-full px-3 py-2 rounded-lg text-sm" step="0.01"
+                style={{ background: 'var(--color-bg-hover)', border: '1px solid var(--color-border-default)', color: 'var(--color-text-primary)' }}
+                value={newPolicyForm.commissionRate} onChange={e => setNewPolicyForm(f => ({ ...f, commissionRate: e.target.value }))} placeholder="0.00" />
+            </div>
+          </div>
+
+          {/* Document Uploads */}
+          <div className="p-3 rounded-lg" style={{ background: 'var(--color-bg-base)', border: '1px solid var(--color-border-default)' }}>
+            <h4 className="text-xs font-semibold mb-3" style={{ color: 'var(--color-text-primary)' }}>Document Uploads (PDF/Image)</h4>
+            <div className="grid grid-cols-2 gap-3">
+              <FileUploadField label="Policy Document *" accept=".pdf,.jpg,.jpeg,.png"
+                onUpload={(f) => handleDocUpload('policyDocument', f, true)}
+                uploadedUrl={policyDocs.policyDocument} uploading={uploadingField === 'policyDocument'} />
+              <FileUploadField label="Policy Schedule" accept=".pdf,.jpg,.jpeg,.png"
+                onUpload={(f) => handleDocUpload('policySchedule', f, true)}
+                uploadedUrl={policyDocs.policySchedule} uploading={uploadingField === 'policySchedule'} />
+              <FileUploadField label="Debit Note *" accept=".pdf,.jpg,.jpeg,.png"
+                onUpload={(f) => handleDocUpload('debitNotePath', f, true)}
+                uploadedUrl={policyDocs.debitNotePath} uploading={uploadingField === 'debitNotePath'} />
+              <FileUploadField label="Credit Note" accept=".pdf,.jpg,.jpeg,.png"
+                onUpload={(f) => handleDocUpload('creditNotePath', f, true)}
+                uploadedUrl={policyDocs.creditNotePath} uploading={uploadingField === 'creditNotePath'} />
+            </div>
+          </div>
+
+          {/* Policy Details */}
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              { key: 'policyNumber', label: 'Policy Number *', type: 'text' },
+              { key: 'policyHolderName', label: 'Policy Holder Name *', type: 'text' },
+              { key: 'premiumCharged', label: 'Premium Charged (AED) *', type: 'number' },
+              { key: 'startDate', label: 'Policy Start Date *', type: 'date' },
+              { key: 'endDate', label: 'Policy Expiry Date *', type: 'date' },
+              { key: 'debitNoteNumber', label: 'Debit Note Number *', type: 'text' },
+              { key: 'debitNoteAmount', label: 'Debit Note Amount (AED) *', type: 'number' },
+              { key: 'creditNoteNumber', label: 'Credit Note Number', type: 'text' },
+              { key: 'creditNoteAmount', label: 'Credit Note Amount (AED)', type: 'number' },
+            ].map(f => (
+              <div key={f.key}>
+                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>{f.label}</label>
+                <input type={f.type} className="w-full px-3 py-2 rounded-lg text-sm"
+                  style={{ background: 'var(--color-bg-hover)', border: '1px solid var(--color-border-default)', color: 'var(--color-text-primary)' }}
+                  value={(newPolicyForm as any)[f.key]}
+                  onChange={e => setNewPolicyForm(p => ({ ...p, [f.key]: e.target.value }))} />
+              </div>
+            ))}
+          </div>
+          <div>
+            <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>Notes</label>
+            <textarea className="w-full px-3 py-2 rounded-lg text-sm" rows={2}
+              style={{ background: 'var(--color-bg-hover)', border: '1px solid var(--color-border-default)', color: 'var(--color-text-primary)' }}
+              value={newPolicyForm.notes} onChange={e => setNewPolicyForm(p => ({ ...p, notes: e.target.value }))} />
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" size="sm" onClick={() => setCompleteModal(null)}>Cancel</Button>
+            <Button size="sm" loading={completeAssignment.isPending} onClick={handleComplete}
+              disabled={!newPolicyForm.insurer || !newPolicyForm.product || !newPolicyForm.premium || !newPolicyForm.sumInsured || !newPolicyForm.startDate || !newPolicyForm.endDate}>
+              Create Policy
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Complete Modal - Policy Issuance */}
       <Modal open={!!completeModal && !!completeModal?.policy} onClose={() => setCompleteModal(null)}

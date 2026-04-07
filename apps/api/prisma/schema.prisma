@@ -186,6 +186,7 @@ model CustomerID {
   policies      Policy[]
   endorsements  Endorsement[]
   invoices      Invoice[]
+  uwAssignments UwAssignment[] @relation("UwAssignmentCustomer")
 
   @@index([leadId])
   @@index([ref])
@@ -331,6 +332,7 @@ model Invoice {
   updatedAt       DateTime  @updatedAt
 
   accountsQueueItems AccountsQueueItem[] @relation("InvoiceQueueItem")
+  uwAssignments     UwAssignment[]       @relation("InvoiceUwAssignment")
 
   @@index([customerIdId])
   @@index([policyId])
@@ -374,6 +376,10 @@ model UwAssignment {
   policy          Policy?   @relation("PolicyUwAssignment", fields: [policyId], references: [id])
   endorsementId   String?
   endorsement     Endorsement? @relation("EndorsementUwAssignment", fields: [endorsementId], references: [id])
+  invoiceId       String?
+  invoice         Invoice?  @relation("InvoiceUwAssignment", fields: [invoiceId], references: [id])
+  customerIdId    String?
+  customer        CustomerID? @relation("UwAssignmentCustomer", fields: [customerIdId], references: [id])
   underwriterId   String
   underwriter     User      @relation("UwAssignee", fields: [underwriterId], references: [id])
   status          String    @default("QUEUED")   // QUEUED | IN_PROGRESS | COMPLETED | RETURNED
@@ -389,6 +395,8 @@ model UwAssignment {
   @@index([status])
   @@index([policyId])
   @@index([endorsementId])
+  @@index([invoiceId])
+  @@index([customerIdId])
   @@index([createdAt])
   @@map("uw_assignments")
 }

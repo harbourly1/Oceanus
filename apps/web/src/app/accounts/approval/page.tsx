@@ -137,7 +137,7 @@ export default function ApprovalQueuePage() {
         <div className="space-y-4">
           <p className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
             {actionModal?.action === 'APPROVE'
-              ? 'Confirm that the receipt matches the invoice amount. This will assign the policy to an underwriter.'
+              ? 'Confirm that the receipt matches the invoice amount. This will assign to an underwriter for policy creation.'
               : 'Provide remarks for declining this invoice. It will be returned to the sales executive.'}
           </p>
           <div>

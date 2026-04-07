@@ -169,7 +169,7 @@ export class AccountsQueueService {
           });
         }
 
-        // If invoice is for a new policy, ensure policy is in PENDING_UW state
+        // If invoice is for a new policy and policy already exists, ensure policy is in PENDING_UW state
         const invoice = item.invoice!;
         if (invoice.policyId && invoice.type === 'NEW_POLICY') {
           await tx.policy.update({
@@ -338,9 +338,9 @@ export class AccountsQueueService {
       return;
     }
 
-    // Determine what to assign: policy or endorsement
+    // Determine what to assign: policy, invoice (new flow), or endorsement
     if (invoice.type === 'NEW_POLICY' && invoice.policyId) {
-      // Check if UW assignment already exists for this policy
+      // Existing flow: policy was created before invoice
       const existing = await this.prisma.uwAssignment.findFirst({
         where: { policyId: invoice.policyId, status: { in: ['QUEUED', 'IN_PROGRESS'] } },
       });
@@ -354,6 +354,21 @@ export class AccountsQueueService {
         approvedByUserId,
       );
       this.logger.log(`Auto-created UW assignment for policy ${invoice.policyId} -> underwriter ${salesExec.assignedUnderwriterId}`);
+    } else if (invoice.type === 'NEW_POLICY' && !invoice.policyId) {
+      // New flow: invoice created without a policy — UW will create the policy
+      const existing = await this.prisma.uwAssignment.findFirst({
+        where: { invoiceId: invoice.id, status: { in: ['QUEUED', 'IN_PROGRESS'] } },
+      });
+      if (existing) {
+        this.logger.log(`UW assignment already exists for invoice ${invoice.id}. Skipping.`);
+        return;
+      }
+
+      await this.uwAssignments.create(
+        { invoiceId: invoice.id, customerIdId: invoice.customerIdId, underwriterId: salesExec.assignedUnderwriterId, notes: `Auto-assigned after invoice ${invoice.invoiceNumber} approved` },
+        approvedByUserId,
+      );
+      this.logger.log(`Auto-created UW assignment for invoice ${invoice.invoiceNumber} (no policy yet) -> underwriter ${salesExec.assignedUnderwriterId}`);
     } else if (invoice.endorsementId) {
       // Check if UW assignment already exists for this endorsement
       const existing = await this.prisma.uwAssignment.findFirst({

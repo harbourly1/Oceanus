@@ -27,11 +27,13 @@ export class UwAssignmentsService {
   async create(data: {
     policyId?: string;
     endorsementId?: string;
+    invoiceId?: string;
+    customerIdId?: string;
     underwriterId: string;
     notes?: string;
   }, assignedById: string) {
-    if (!data.policyId && !data.endorsementId) {
-      throw new BadRequestException('Either policyId or endorsementId is required');
+    if (!data.policyId && !data.endorsementId && !data.invoiceId) {
+      throw new BadRequestException('Either policyId, endorsementId, or invoiceId is required');
     }
 
     // Validate underwriter
@@ -45,6 +47,8 @@ export class UwAssignmentsService {
       data: {
         policyId: data.policyId || null,
         endorsementId: data.endorsementId || null,
+        invoiceId: data.invoiceId || null,
+        customerIdId: data.customerIdId || null,
         underwriterId: data.underwriterId,
         assignedById,
         status: 'QUEUED',
@@ -53,13 +57,15 @@ export class UwAssignmentsService {
       include: {
         policy: { include: { customerId: { select: { id: true, ref: true, customerName: true } } } },
         endorsement: { include: { policy: { select: { id: true, ref: true } }, customerId: { select: { id: true, ref: true, customerName: true } } } },
+        invoice: { select: { id: true, invoiceNumber: true, amount: true, type: true, customerId: { select: { id: true, ref: true, customerName: true } } } },
+        customer: { select: { id: true, ref: true, customerName: true } },
         underwriter: { select: { id: true, name: true } },
         assignedBy: { select: { id: true, name: true } },
       },
     });
 
     // Build ref for notification
-    const ref = assignment.policy?.ref || assignment.endorsement?.ref || 'Unknown';
+    const ref = assignment.policy?.ref || assignment.endorsement?.ref || assignment.invoice?.invoiceNumber || 'Unknown';
 
     // Notify the underwriter + activity log
     this.activity.log({ entityId: assignment.id, entityType: 'uw_assignment', userId: assignedById, action: 'CREATED', detail: `UW Assignment for ${ref} assigned to ${uw.name}` });
@@ -107,6 +113,22 @@ export class UwAssignmentsService {
               },
             },
           },
+          invoice: {
+            include: {
+              customerId: {
+                select: {
+                  id: true, ref: true, customerName: true,
+                  lead: { select: { id: true, ref: true, productType: true, formData: true, quotesData: true, selectedQuote: true, fullName: true, email: true, phone: true, company: true, currency: true } },
+                },
+              },
+            },
+          },
+          customer: {
+            select: {
+              id: true, ref: true, customerName: true,
+              lead: { select: { id: true, ref: true, productType: true, formData: true, quotesData: true, selectedQuote: true, fullName: true, email: true, phone: true, company: true, currency: true } },
+            },
+          },
           underwriter: { select: { id: true, name: true } },
           assignedBy: { select: { id: true, name: true } },
         },
@@ -145,6 +167,20 @@ export class UwAssignmentsService {
             invoices: { orderBy: { createdAt: 'desc' } },
           },
         },
+        invoice: {
+          include: {
+            customerId: {
+              include: {
+                lead: { select: { id: true, ref: true, productType: true, formData: true, quotesData: true, selectedQuote: true, fullName: true, email: true, phone: true, company: true, nationality: true, residence: true, currency: true, source: true, documents: true } },
+              },
+            },
+          },
+        },
+        customer: {
+          include: {
+            lead: { select: { id: true, ref: true, productType: true, formData: true, quotesData: true, selectedQuote: true, fullName: true, email: true, phone: true, company: true, nationality: true, residence: true, currency: true, source: true, documents: true } },
+          },
+        },
         underwriter: { select: { id: true, name: true, email: true } },
         assignedBy: { select: { id: true, name: true } },
       },
@@ -165,6 +201,12 @@ export class UwAssignmentsService {
 
   async complete(id: string, data?: {
     notes?: string;
+    // Policy creation fields (new flow — UW creates policy)
+    insurer?: string;
+    product?: string;
+    premium?: number;
+    commission?: number;
+    commissionRate?: number;
     // Policy issuance fields
     policyNumber?: string;
     policyHolderName?: string;
@@ -191,7 +233,7 @@ export class UwAssignmentsService {
   }) {
     const assignment = await this.prisma.uwAssignment.findUnique({
       where: { id },
-      include: { policy: true, endorsement: true },
+      include: { policy: true, endorsement: true, invoice: true },
     });
     if (!assignment) throw new NotFoundException('UW Assignment not found');
 
@@ -206,7 +248,74 @@ export class UwAssignmentsService {
         },
       });
 
-      // If policy assignment, validate required fields then mark policy as ACTIVE
+      // ── New flow: invoice-based assignment — CREATE a new policy ──────────
+      if (!assignment.policyId && assignment.invoiceId) {
+        const missingFields: string[] = [];
+        if (!data?.insurer) missingFields.push('insurer');
+        if (!data?.product) missingFields.push('product');
+        if (data?.premium == null) missingFields.push('premium');
+        if (data?.sumInsured == null) missingFields.push('sumInsured');
+        if (!data?.startDate) missingFields.push('startDate');
+        if (!data?.endDate) missingFields.push('endDate');
+        if (!data?.policyNumber) missingFields.push('policyNumber');
+        if (!data?.policyDocument) missingFields.push('policyDocument');
+        if (!data?.debitNoteNumber) missingFields.push('debitNoteNumber');
+        if (data?.debitNoteAmount == null) missingFields.push('debitNoteAmount');
+        if (missingFields.length > 0) {
+          throw new BadRequestException(`Required fields missing for policy creation: ${missingFields.join(', ')}`);
+        }
+
+        // Derive customerIdId from the invoice or from the assignment itself
+        const customerId = assignment.customerIdId || assignment.invoice!.customerIdId;
+
+        // Generate policy ref (same P-YYYY-XXXX pattern as PoliciesService)
+        const year = new Date().getFullYear();
+        const count = await tx.policy.count({ where: { ref: { startsWith: `P-${year}-` } } });
+        const ref = `P-${year}-${String(count + 1).padStart(4, '0')}`;
+
+        const newPolicy = await tx.policy.create({
+          data: {
+            ref,
+            customerIdId: customerId,
+            insurer: data!.insurer!,
+            product: data!.product!,
+            premium: data!.premium!,
+            sumInsured: data!.sumInsured!,
+            commission: data?.commission ?? 0,
+            commissionRate: data?.commissionRate ?? 0,
+            startDate: parseDate(data!.startDate!),
+            endDate: parseDate(data!.endDate!),
+            status: 'ACTIVE',
+            policyNumber: data!.policyNumber!,
+            policyHolderName: data?.policyHolderName || null,
+            premiumCharged: data?.premiumCharged ?? null,
+            policyDocument: data!.policyDocument!,
+            policySchedule: data?.policySchedule || null,
+            debitNoteNumber: data!.debitNoteNumber!,
+            debitNoteAmount: data!.debitNoteAmount!,
+            debitNotePath: data?.debitNotePath || null,
+            creditNoteNumber: data?.creditNoteNumber || null,
+            creditNoteAmount: data?.creditNoteAmount ?? null,
+            creditNotePath: data?.creditNotePath || null,
+            issuedById: assignment.underwriterId,
+            issuedAt: new Date(),
+          },
+        });
+
+        // Link the new policy back to the invoice
+        await tx.invoice.update({
+          where: { id: assignment.invoiceId },
+          data: { policyId: newPolicy.id },
+        });
+
+        // Record policyId on the UW assignment
+        await tx.uwAssignment.update({
+          where: { id },
+          data: { policyId: newPolicy.id },
+        });
+      }
+
+      // ── Existing flow: policy already exists — UPDATE it to ACTIVE ───────
       if (assignment.policyId) {
         // Validate required UW fields before marking ACTIVE
         const missingFields: string[] = [];
@@ -378,13 +487,17 @@ export class UwAssignmentsService {
       if (assignment.assignedById) {
         this.notifications.notifyStatusChange(id, 'uw_assignment', assignment.assignedById, 'UW Assignment', 'COMPLETED');
       }
-      if (assignment.policyId && assignment.policy) {
+
+      // Notify the sales exec that the policy has been issued
+      const customerIdForNotif = assignment.policy?.customerIdId || assignment.customerIdId || assignment.invoice?.customerIdId;
+      if (customerIdForNotif) {
         const customer = await this.prisma.customerID.findUnique({
-          where: { id: assignment.policy.customerIdId },
+          where: { id: customerIdForNotif },
           include: { lead: { select: { assignedToId: true } } },
         });
         if (customer?.lead?.assignedToId) {
-          this.notifications.notifyPolicyIssued(assignment.policyId, customer.lead.assignedToId, assignment.policy.ref);
+          const policyRef = assignment.policy?.ref || 'New Policy';
+          this.notifications.notifyPolicyIssued(assignment.policyId || id, customer.lead.assignedToId, policyRef);
         }
       }
 

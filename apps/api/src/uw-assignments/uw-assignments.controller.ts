@@ -18,7 +18,7 @@ export class UwAssignmentsController {
   @Roles('UW_MANAGER', 'ADMIN')
   @ApiOperation({ summary: 'Create UW assignment' })
   async create(
-    @Body() body: { policyId?: string; endorsementId?: string; underwriterId: string; notes?: string },
+    @Body() body: { policyId?: string; endorsementId?: string; invoiceId?: string; customerIdId?: string; underwriterId: string; notes?: string },
     @CurrentUser('id') userId: string,
   ) {
     return this.uwService.create(body, userId);
@@ -62,6 +62,11 @@ export class UwAssignmentsController {
     @Param('id') id: string,
     @Body() body: {
       notes?: string;
+      insurer?: string;
+      product?: string;
+      premium?: number;
+      commission?: number;
+      commissionRate?: number;
       policyNumber?: string;
       policyHolderName?: string;
       premiumCharged?: number;
