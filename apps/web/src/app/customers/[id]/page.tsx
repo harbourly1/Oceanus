@@ -250,6 +250,8 @@ export default function CustomerDetailPage() {
     amount: '', receiptAmount: '', paymentDate: '', paymentMode: 'Online',
     installment: false, installmentDetails: '', notes: '', policyPurchaseType: 'ANNUAL',
   });
+  const [receiptUploadUrl, setReceiptUploadUrl] = useState<string | null>(null);
+  const [receiptUploading, setReceiptUploading] = useState(false);
 
   // Edit Policy state
   const [editPolicyModal, setEditPolicyModal] = useState(false);
@@ -326,6 +328,15 @@ export default function CustomerDetailPage() {
     } catch (e) { /* mutation error handled by react-query */ }
   };
 
+  const handleReceiptUpload = async (file: File) => {
+    setReceiptUploading(true);
+    try {
+      const result = await uploadFile.mutateAsync({ path: '/uploads/document', file });
+      setReceiptUploadUrl(result.url);
+    } catch { /* handled */ }
+    setReceiptUploading(false);
+  };
+
   const handleCreateInvoice = async () => {
     try {
       await createInvoice.mutateAsync({
@@ -333,6 +344,7 @@ export default function CustomerDetailPage() {
         type: 'NEW_POLICY',
         amount: parseFloat(invoiceForm.amount),
         receiptAmount: invoiceForm.receiptAmount ? parseFloat(invoiceForm.receiptAmount) : undefined,
+        receiptPath: receiptUploadUrl || undefined,
         paymentDate: invoiceForm.paymentDate || undefined,
         paymentMode: invoiceForm.paymentMode,
         installment: invoiceForm.installment,
@@ -343,6 +355,7 @@ export default function CustomerDetailPage() {
       });
       setInvoiceModal(false);
       setInvoiceForm({ amount: '', receiptAmount: '', paymentDate: '', paymentMode: 'Online', installment: false, installmentDetails: '', notes: '', policyPurchaseType: 'ANNUAL' });
+      setReceiptUploadUrl(null);
       refetch();
     } catch (e) { /* mutation error handled by react-query */ }
   };
@@ -728,6 +741,9 @@ export default function CustomerDetailPage() {
                 placeholder="e.g., 3 monthly installments..." />
             </div>
           )}
+          <FileUploadField label="Receipt Document (PDF/Image)" accept=".pdf,.jpg,.jpeg,.png"
+            onUpload={handleReceiptUpload}
+            uploadedUrl={receiptUploadUrl} uploading={receiptUploading} />
           <div>
             <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>Notes</label>
             <textarea className="w-full px-3 py-2 rounded-lg text-sm" rows={2}

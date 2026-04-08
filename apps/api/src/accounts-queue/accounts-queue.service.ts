@@ -60,6 +60,7 @@ export class AccountsQueueService {
             include: {
               customerId: { select: { id: true, ref: true, customerName: true } },
               policy: { select: { id: true, ref: true, product: true } },
+              createdBy: { select: { id: true, name: true } },
             },
           },
           endorsement: {
