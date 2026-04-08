@@ -118,6 +118,7 @@ export class CustomersService {
           orderBy: { createdAt: 'desc' },
         },
         invoices: {
+          include: { createdBy: { select: { id: true, name: true } } },
           orderBy: { createdAt: 'desc' },
         },
       },

@@ -239,6 +239,7 @@ export default function CustomerDetailPage() {
   });
   const [endorsementModal, setEndorsementModal] = useState<string | null>(null);
   const [invoiceModal, setInvoiceModal] = useState(false);
+  const [expandedInvoiceId, setExpandedInvoiceId] = useState<string | null>(null);
 
   // Endorsement form state
   const [endorsementForm, setEndorsementForm] = useState({
@@ -600,35 +601,149 @@ export default function CustomerDetailPage() {
             action={canEditCustomer && <Button size="sm" onClick={() => setInvoiceModal(true)}>New Invoice</Button>}
           />
           {customer.invoices?.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead>
-                  <tr style={{ borderBottom: '1px solid var(--color-border-default)' }}>
-                    {['Invoice #', 'Type', 'Amount', 'Receipt Amt', 'Payment Mode', 'Status', 'Created'].map(h => (
-                      <th key={h} className="px-3 py-2 text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {customer.invoices.map((inv: any) => (
-                    <tr key={inv.id} style={{ borderBottom: '1px solid var(--color-border-default)' }}>
-                      <td className="px-3 py-2 text-xs font-medium" style={{ color: 'var(--color-text-primary)' }}>{inv.invoiceNumber}</td>
-                      <td className="px-3 py-2 text-xs" style={{ color: 'var(--color-text-secondary)' }}>{inv.type.replace('_', ' ')}</td>
-                      <td className="px-3 py-2 text-xs font-medium" style={{ color: 'var(--color-text-primary)' }}>AED {inv.total?.toLocaleString()}</td>
-                      <td className="px-3 py-2 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
-                        {inv.receiptAmount ? `AED ${inv.receiptAmount.toLocaleString()}` : '-'}
-                      </td>
-                      <td className="px-3 py-2 text-xs" style={{ color: 'var(--color-text-secondary)' }}>{inv.paymentMode || '-'}</td>
-                      <td className="px-3 py-2">
-                        <Badge {...((INVOICE_STATUS_CONFIG as any)[inv.status] || INVOICE_STATUS_CONFIG.DRAFT)} />
-                      </td>
-                      <td className="px-3 py-2 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+            <div className="space-y-0">
+              {customer.invoices.map((inv: any) => {
+                const isExpanded = expandedInvoiceId === inv.id;
+                const statusCfg = (INVOICE_STATUS_CONFIG as any)[inv.status] || INVOICE_STATUS_CONFIG.DRAFT;
+                const hasReceipt = !!inv.receiptPath;
+                const hasDetails = inv.notes || inv.installment || inv.paymentDate || hasReceipt;
+                const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+                const receiptUrl = inv.receiptPath ? (inv.receiptPath.startsWith('http') ? inv.receiptPath : `${apiBase}${inv.receiptPath}`) : null;
+
+                return (
+                  <div key={inv.id} style={{ borderBottom: '1px solid var(--color-border-default)' }}>
+                    {/* Summary row */}
+                    <div className="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:opacity-80"
+                      onClick={() => setExpandedInvoiceId(isExpanded ? null : inv.id)}>
+                      {isExpanded
+                        ? <ChevronDown size={14} style={{ color: 'var(--color-text-muted)' }} />
+                        : <ChevronRight size={14} style={{ color: 'var(--color-text-muted)' }} />}
+                      <span className="text-xs font-medium w-32" style={{ color: 'var(--color-text-primary)' }}>{inv.invoiceNumber}</span>
+                      <span className="text-xs w-24" style={{ color: 'var(--color-text-secondary)' }}>{inv.type?.replace('_', ' ')}</span>
+                      <span className="text-xs font-medium w-28" style={{ color: 'var(--color-text-primary)' }}>AED {inv.total?.toLocaleString()}</span>
+                      <Badge label={statusCfg.label} color={statusCfg.color} bg={statusCfg.bg} />
+                      <span className="text-xs flex-1" style={{ color: 'var(--color-text-secondary)' }}>
                         {new Date(inv.createdAt).toLocaleDateString()}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                      </span>
+                      {hasReceipt && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: 'rgba(16,185,129,0.1)', color: '#10b981' }}>Receipt</span>
+                      )}
+                    </div>
+
+                    {/* Expanded details */}
+                    {isExpanded && (
+                      <div className="px-10 pb-4 space-y-4">
+                        {/* Financial breakdown */}
+                        <div>
+                          <span className="block text-[10px] uppercase tracking-wide font-semibold mb-2" style={{ color: 'var(--color-text-muted)' }}>Financial Details</span>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                            <div>
+                              <span className="block text-[10px]" style={{ color: 'var(--color-text-muted)' }}>Base Amount</span>
+                              <span className="text-xs font-medium" style={{ color: 'var(--color-text-primary)' }}>AED {inv.amount?.toLocaleString() || '0'}</span>
+                            </div>
+                            <div>
+                              <span className="block text-[10px]" style={{ color: 'var(--color-text-muted)' }}>VAT (5%)</span>
+                              <span className="text-xs font-medium" style={{ color: 'var(--color-text-primary)' }}>AED {inv.vat?.toLocaleString() || '0'}</span>
+                            </div>
+                            <div>
+                              <span className="block text-[10px]" style={{ color: 'var(--color-text-muted)' }}>Total</span>
+                              <span className="text-xs font-semibold" style={{ color: 'var(--color-text-primary)' }}>AED {inv.total?.toLocaleString() || '0'}</span>
+                            </div>
+                            <div>
+                              <span className="block text-[10px]" style={{ color: 'var(--color-text-muted)' }}>Receipt Amount</span>
+                              <span className="text-xs font-medium" style={{
+                                color: inv.receiptAmount && inv.total && inv.receiptAmount !== inv.total
+                                  ? 'var(--color-accent-red, #ef4444)' : 'var(--color-text-primary)',
+                              }}>
+                                {inv.receiptAmount ? `AED ${inv.receiptAmount.toLocaleString()}` : 'Not provided'}
+                                {inv.receiptAmount && inv.total && inv.receiptAmount !== inv.total && ' (mismatch)'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Payment details */}
+                        <div>
+                          <span className="block text-[10px] uppercase tracking-wide font-semibold mb-2" style={{ color: 'var(--color-text-muted)' }}>Payment Details</span>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                            <div>
+                              <span className="block text-[10px]" style={{ color: 'var(--color-text-muted)' }}>Payment Mode</span>
+                              <span className="text-xs font-medium" style={{ color: 'var(--color-text-primary)' }}>{inv.paymentMode || '-'}</span>
+                            </div>
+                            <div>
+                              <span className="block text-[10px]" style={{ color: 'var(--color-text-muted)' }}>Payment Date</span>
+                              <span className="text-xs font-medium" style={{ color: 'var(--color-text-primary)' }}>
+                                {inv.paymentDate ? new Date(inv.paymentDate).toLocaleDateString() : 'Not provided'}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="block text-[10px]" style={{ color: 'var(--color-text-muted)' }}>Due Date</span>
+                              <span className="text-xs font-medium" style={{ color: 'var(--color-text-primary)' }}>
+                                {inv.dueDate ? new Date(inv.dueDate).toLocaleDateString() : '-'}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="block text-[10px]" style={{ color: 'var(--color-text-muted)' }}>Purchase Type</span>
+                              <span className="text-xs font-medium" style={{ color: 'var(--color-text-primary)' }}>{inv.policyPurchaseType || '-'}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Installment */}
+                        {inv.installment && (
+                          <div>
+                            <span className="block text-[10px] uppercase tracking-wide font-semibold mb-2" style={{ color: 'var(--color-text-muted)' }}>Installment</span>
+                            <div className="rounded-lg px-3 py-2" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)' }}>
+                              <span className="text-xs" style={{ color: 'var(--color-text-primary)' }}>
+                                {inv.installmentDetails || 'Installment payment enabled (no details provided)'}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Receipt Document */}
+                        <div>
+                          <span className="block text-[10px] uppercase tracking-wide font-semibold mb-2" style={{ color: 'var(--color-text-muted)' }}>Receipt Document</span>
+                          {receiptUrl ? (
+                            <a href={receiptUrl} target="_blank" rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 px-3 py-2 rounded text-xs font-medium hover:opacity-80 transition-opacity"
+                              style={{ background: 'rgba(59,130,246,0.08)', color: 'var(--color-accent-blue, #3b82f6)' }}>
+                              <FileText size={14} />
+                              View Receipt
+                            </a>
+                          ) : (
+                            <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>No receipt uploaded</span>
+                          )}
+                        </div>
+
+                        {/* Notes */}
+                        {inv.notes && (
+                          <div>
+                            <span className="block text-[10px] uppercase tracking-wide font-semibold mb-2" style={{ color: 'var(--color-text-muted)' }}>Notes</span>
+                            <p className="text-xs rounded-lg px-3 py-2" style={{ background: 'var(--color-bg-hover)', color: 'var(--color-text-secondary)' }}>{inv.notes}</p>
+                          </div>
+                        )}
+
+                        {/* Metadata */}
+                        <div className="flex gap-6 pt-1" style={{ borderTop: '1px solid var(--color-border-default)' }}>
+                          <div>
+                            <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>Created: </span>
+                            <span className="text-[10px] font-medium" style={{ color: 'var(--color-text-secondary)' }}>
+                              {inv.createdAt ? new Date(inv.createdAt).toLocaleString() : '-'}
+                            </span>
+                          </div>
+                          {inv.createdBy?.name && (
+                            <div>
+                              <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>By: </span>
+                              <span className="text-[10px] font-medium" style={{ color: 'var(--color-text-secondary)' }}>{inv.createdBy.name}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           ) : (
             <p className="text-xs py-8 text-center" style={{ color: 'var(--color-text-muted)' }}>No invoices yet</p>
