@@ -7,6 +7,7 @@ import { PortalBar } from './portal-bar';
 import { useNotifications, useMarkNotificationRead, useMarkAllNotificationsRead } from '@/hooks/use-api';
 import { Anchor, Bell, Check, CheckCheck, Sun, Moon } from 'lucide-react';
 import { useTheme } from '@/lib/theme-provider';
+import { GlobalSearch } from './global-search';
 
 function timeAgo(dateStr: string) {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -97,6 +98,13 @@ export function TopBar() {
         </div>
         <PortalBar />
       </div>
+
+      {/* Center: Global Search */}
+      {user && (
+        <div className="flex-1 flex justify-center px-4">
+          <GlobalSearch />
+        </div>
+      )}
 
       {/* Right: Notifications + User info + Logout */}
       <div className="flex items-center gap-3">

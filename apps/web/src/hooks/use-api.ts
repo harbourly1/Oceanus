@@ -1227,3 +1227,17 @@ export function useImportReferenceDataCsv() {
     },
   });
 }
+
+// ─── Global Search ────────────────────────────────────────────────────────────
+
+export function useGlobalSearch(query: string) {
+  const token = useToken();
+  return useQuery({
+    queryKey: ['global-search', query],
+    queryFn: () => api.get<{ leads: any[]; customers: any[]; policies: any[] }>(
+      `/search?q=${encodeURIComponent(query)}&limit=8`, { token },
+    ),
+    enabled: !!token && query.length >= 2,
+    staleTime: 30_000,
+  });
+}

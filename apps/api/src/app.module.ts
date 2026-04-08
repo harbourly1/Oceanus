@@ -24,6 +24,7 @@ import { InsurersModule } from './insurers/insurers.module';
 import { ReferenceDataModule } from './reference-data/reference-data.module';
 import { QuoteEngineModule } from './quote-engine/quote-engine.module';
 import { StorageModule } from './storage/storage.module';
+import { SearchModule } from './search/search.module';
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { StorageModule } from './storage/storage.module';
     InsurersModule,
     ReferenceDataModule,
     QuoteEngineModule,
+    SearchModule,
   ],
 })
 export class AppModule {}
