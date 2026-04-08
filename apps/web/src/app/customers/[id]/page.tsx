@@ -350,7 +350,7 @@ export default function CustomerDetailPage() {
   const handleEditDocUpload = async (field: string, file: File, isPolicy: boolean) => {
     setEditUploadingField(field);
     try {
-      const result = await uploadFile.mutateAsync({ path: '/api/uploads/document', file });
+      const result = await uploadFile.mutateAsync({ path: '/uploads/document', file });
       if (isPolicy) {
         setPolicyEditDocs(d => ({ ...d, [field]: result.url }));
       } else {

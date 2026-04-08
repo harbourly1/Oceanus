@@ -144,7 +144,7 @@ export default function UwInProgressPage() {
   const handleDocUpload = async (field: string, file: File, isPolicy: boolean) => {
     setUploadingField(field);
     try {
-      const result = await uploadFile.mutateAsync({ path: '/api/uploads/document', file });
+      const result = await uploadFile.mutateAsync({ path: '/uploads/document', file });
       if (isPolicy) {
         setPolicyDocs(d => ({ ...d, [field]: result.url }));
       } else {
