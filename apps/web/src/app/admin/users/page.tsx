@@ -1,14 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import { useAllUsers, useCreateUser, useUpdateUser, useResetPassword } from '@/hooks/use-api';
+import { useAllUsers, useCreateUser, useUpdateUser, useResetPassword, useTransferUnderwriter, useUnderwriters } from '@/hooks/use-api';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input, Select } from '@/components/ui/input';
 import { Modal } from '@/components/ui/modal';
 import { LoadingState, ErrorState, EmptyState } from '@/components/ui/states';
 import { ROLE_CONFIG } from '@oceanus/shared';
-import { UserCog, Plus, Pencil, KeyRound, ShieldCheck, ShieldOff } from 'lucide-react';
+import { UserCog, Plus, Pencil, KeyRound, ShieldCheck, ShieldOff, ArrowRightLeft } from 'lucide-react';
 
 const ROLE_OPTIONS = [
   { value: 'SALES_EXEC', label: 'Sales Executive' },
@@ -35,13 +35,19 @@ const ROLE_COLORS = ROLE_CONFIG;
 
 export default function UserManagementPage() {
   const { data: users, isLoading, error, refetch } = useAllUsers();
+  const { data: underwritersList } = useUnderwriters();
   const createUser = useCreateUser();
   const updateUser = useUpdateUser();
   const resetPassword = useResetPassword();
+  const transferUw = useTransferUnderwriter();
 
   const [createModal, setCreateModal] = useState(false);
   const [editUser, setEditUser] = useState<any>(null);
   const [resetPwUser, setResetPwUser] = useState<any>(null);
+  const [transferUser, setTransferUser] = useState<any>(null);
+  const [targetUwId, setTargetUwId] = useState('');
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [transferSuccess, setTransferSuccess] = useState<string | null>(null);
 
   // Create form
   const [createForm, setCreateForm] = useState({
@@ -74,6 +80,12 @@ export default function UserManagementPage() {
     setResetPwUser(user);
   };
 
+  const openTransfer = (user: any) => {
+    setTargetUwId('');
+    setTransferSuccess(null);
+    setTransferUser(user);
+  };
+
   const handleCreate = async () => {
     await createUser.mutateAsync(createForm);
     setCreateModal(false);
@@ -82,9 +94,15 @@ export default function UserManagementPage() {
 
   const handleEdit = async () => {
     if (!editUser) return;
-    await updateUser.mutateAsync({ id: editUser.id, ...editForm });
-    setEditUser(null);
-    refetch();
+    try {
+      await updateUser.mutateAsync({ id: editUser.id, ...editForm });
+      setEditUser(null);
+      setActionError(null);
+      refetch();
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err?.message || 'Failed to update user';
+      setActionError(msg);
+    }
   };
 
   const handleResetPassword = async () => {
@@ -94,14 +112,40 @@ export default function UserManagementPage() {
   };
 
   const handleToggleActive = async (user: any) => {
-    await updateUser.mutateAsync({ id: user.id, isActive: !user.isActive });
-    refetch();
+    setActionError(null);
+    try {
+      await updateUser.mutateAsync({ id: user.id, isActive: !user.isActive });
+      refetch();
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err?.message || 'Failed to update user status';
+      setActionError(msg);
+    }
+  };
+
+  const handleTransfer = async () => {
+    if (!transferUser || !targetUwId) return;
+    try {
+      const result = await transferUw.mutateAsync({ fromId: transferUser.id, targetUnderwriterId: targetUwId });
+      setTransferSuccess(
+        `Transferred ${result.assignmentsTransferred} assignment(s) and ${result.salesExecsRemapped} sales exec(s) from ${result.from.name} to ${result.to.name}.`,
+      );
+      refetch();
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err?.message || 'Transfer failed';
+      setActionError(msg);
+    }
   };
 
   if (isLoading) return <LoadingState message="Loading users..." />;
   if (error) return <ErrorState message={(error as Error).message} />;
 
   const allUsers = users || [];
+  const isUwRole = (role: string) => role === 'UNDERWRITER' || role === 'UW_MANAGER';
+
+  // Build target underwriter options (exclude the source underwriter)
+  const uwOptions = (underwritersList || [])
+    .filter((uw: any) => uw.id !== transferUser?.id && uw.isActive)
+    .map((uw: any) => ({ value: uw.id, label: `${uw.name} (${uw.role === 'UW_MANAGER' ? 'UW Manager' : 'Underwriter'})` }));
 
   return (
     <div className="space-y-6">
@@ -118,6 +162,14 @@ export default function UserManagementPage() {
           <Plus size={14} className="mr-1" /> Create User
         </Button>
       </div>
+
+      {/* Action error banner */}
+      {actionError && (
+        <div className="rounded-lg px-4 py-3 text-sm" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)', color: '#ef4444' }}>
+          {actionError}
+          <button className="ml-3 underline text-xs" onClick={() => setActionError(null)}>Dismiss</button>
+        </div>
+      )}
 
       {allUsers.length === 0 ? (
         <EmptyState
@@ -195,6 +247,16 @@ export default function UserManagementPage() {
                           >
                             <KeyRound size={14} style={{ color: 'var(--color-text-secondary)' }} />
                           </button>
+                          {isUwRole(u.role) && u.isActive && (
+                            <button
+                              onClick={() => openTransfer(u)}
+                              className="p-1.5 rounded-md hover:opacity-80"
+                              style={{ background: 'rgba(59,130,246,0.08)' }}
+                              title="Transfer assignments to another underwriter"
+                            >
+                              <ArrowRightLeft size={14} style={{ color: '#3b82f6' }} />
+                            </button>
+                          )}
                           <button
                             onClick={() => handleToggleActive(u)}
                             className="p-1.5 rounded-md hover:opacity-80"
@@ -276,6 +338,48 @@ export default function UserManagementPage() {
             <Button variant="ghost" onClick={() => setResetPwUser(null)}>Cancel</Button>
             <Button variant="danger" loading={resetPassword.isPending} onClick={handleResetPassword}>Reset Password</Button>
           </div>
+        </div>
+      </Modal>
+
+      {/* Transfer Underwriter Modal */}
+      <Modal open={!!transferUser} onClose={() => { setTransferUser(null); setTransferSuccess(null); }} title={`Transfer — ${transferUser?.name || ''}`}>
+        <div className="space-y-4">
+          {transferSuccess ? (
+            <>
+              <div className="rounded-lg px-4 py-3 text-sm" style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.3)', color: '#22c55e' }}>
+                {transferSuccess}
+              </div>
+              <div className="flex justify-end pt-2">
+                <Button variant="primary" onClick={() => { setTransferUser(null); setTransferSuccess(null); }}>Done</Button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+                Transfer all open UW assignments (QUEUED/IN_PROGRESS) and remap all sales executives
+                from <strong>{transferUser?.name}</strong> to another underwriter.
+                After transfer, you can safely deactivate this underwriter.
+              </p>
+              {uwOptions.length === 0 ? (
+                <div className="rounded-lg px-4 py-3 text-sm" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)', color: '#f59e0b' }}>
+                  No other active underwriters available to transfer to. Create or activate another underwriter first.
+                </div>
+              ) : (
+                <Select
+                  label="Transfer to"
+                  options={[{ value: '', label: 'Select underwriter...' }, ...uwOptions]}
+                  value={targetUwId}
+                  onChange={(e) => setTargetUwId(e.target.value)}
+                />
+              )}
+              <div className="flex gap-2 justify-end pt-2">
+                <Button variant="ghost" onClick={() => { setTransferUser(null); setTransferSuccess(null); }}>Cancel</Button>
+                <Button variant="primary" loading={transferUw.isPending} onClick={handleTransfer} disabled={!targetUwId}>
+                  Transfer
+                </Button>
+              </div>
+            </>
+          )}
         </div>
       </Modal>
     </div>

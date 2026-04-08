@@ -887,6 +887,24 @@ export function useAssignUnderwriter() {
   });
 }
 
+export function useTransferUnderwriter() {
+  const token = useToken();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ fromId, targetUnderwriterId }: { fromId: string; targetUnderwriterId: string }) =>
+      api.post<{ assignmentsTransferred: number; salesExecsRemapped: number; from: { id: string; name: string }; to: { id: string; name: string } }>(
+        `/users/${fromId}/transfer-underwriter`, { targetUnderwriterId }, { token },
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['all-users'] });
+      qc.invalidateQueries({ queryKey: ['team-mappings'] });
+      qc.invalidateQueries({ queryKey: ['users'] });
+      qc.invalidateQueries({ queryKey: ['underwriters'] });
+      qc.invalidateQueries({ queryKey: ['uw-queue'] });
+    },
+  });
+}
+
 // ─── Admin: User Management ───────────────────────────────────
 
 export function useAllUsers() {

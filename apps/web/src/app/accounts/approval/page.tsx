@@ -23,15 +23,22 @@ export default function ApprovalQueuePage() {
   const [actionModal, setActionModal] = useState<{ id: string; action: string } | null>(null);
   const [remarks, setRemarks] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const handleProcess = async () => {
     if (!actionModal) return;
+    setActionError(null);
     try {
       await processItem.mutateAsync({ id: actionModal.id, action: actionModal.action, notes: remarks || undefined });
       setActionModal(null);
       setRemarks('');
       refetch();
-    } catch { /* handled */ }
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err?.message || 'Action failed';
+      setActionError(msg);
+      setActionModal(null);
+      setRemarks('');
+    }
   };
 
   const resolveDocUrl = (path?: string | null) => {
@@ -67,6 +74,14 @@ export default function ApprovalQueuePage() {
           </button>
         ))}
       </div>
+
+      {/* Action error banner */}
+      {actionError && (
+        <div className="rounded-lg px-4 py-3 text-sm" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)', color: '#ef4444' }}>
+          {actionError}
+          <button className="ml-3 underline text-xs" onClick={() => setActionError(null)}>Dismiss</button>
+        </div>
+      )}
 
       {items.length === 0 ? (
         <EmptyState title="No items in queue" message="All caught up!" icon={<CheckCircle size={32} />} />

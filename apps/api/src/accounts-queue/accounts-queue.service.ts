@@ -1,6 +1,7 @@
 import {
   Injectable,
   NotFoundException,
+  BadRequestException,
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
@@ -117,6 +118,20 @@ export class AccountsQueueService {
     // Guard: prevent re-processing terminal items
     if (['APPROVED', 'REJECTED', 'COMPLETED', 'RETURNED'].includes(item.status)) {
       throw new NotFoundException('Queue item has already been processed');
+    }
+
+    // Guard: before approving, ensure the sales exec has an assigned underwriter
+    if (item.type === 'APPROVAL' && action === 'APPROVE' && item.invoice) {
+      const salesExec = await this.prisma.user.findUnique({
+        where: { id: item.invoice.createdById },
+        select: { id: true, name: true, assignedUnderwriterId: true },
+      });
+      if (!salesExec?.assignedUnderwriterId) {
+        throw new BadRequestException(
+          `Cannot approve: sales executive "${salesExec?.name || 'Unknown'}" has no assigned underwriter. ` +
+          `Please ask an admin to map an underwriter in Team Mapping before approving this invoice.`,
+        );
+      }
     }
 
     let newStatus: string;
@@ -335,8 +350,9 @@ export class AccountsQueueService {
     });
 
     if (!salesExec?.assignedUnderwriterId) {
-      this.logger.warn(`No underwriter mapped for sales exec ${salesExec?.name || invoice.createdById}. Skipping auto UW assignment.`);
-      return;
+      throw new BadRequestException(
+        `No underwriter mapped for sales exec ${salesExec?.name || invoice.createdById}. UW assignment cannot be created.`,
+      );
     }
 
     // Determine what to assign: policy, invoice (new flow), or endorsement

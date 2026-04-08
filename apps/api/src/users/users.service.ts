@@ -199,6 +199,29 @@ export class UsersService {
       throw new BadRequestException('Cannot deactivate your own account');
     }
 
+    // Guard: block deactivation of underwriter with open assignments or mapped sales execs
+    if (data.isActive === false && user.isActive && [UserRole.UNDERWRITER, UserRole.UW_MANAGER].includes(user.role as UserRole)) {
+      const [openAssignments, mappedSalesExecs] = await Promise.all([
+        this.prisma.uwAssignment.count({
+          where: { underwriterId: id, status: { in: ['QUEUED', 'IN_PROGRESS'] } },
+        }),
+        this.prisma.user.count({
+          where: { assignedUnderwriterId: id, isActive: true },
+        }),
+      ]);
+
+      const blockers: string[] = [];
+      if (openAssignments > 0) blockers.push(`${openAssignments} open UW assignment(s)`);
+      if (mappedSalesExecs > 0) blockers.push(`${mappedSalesExecs} sales exec(s) mapped to this underwriter`);
+
+      if (blockers.length > 0) {
+        throw new BadRequestException(
+          `Cannot deactivate underwriter "${user.name}": ${blockers.join(' and ')}. ` +
+          `Transfer all assignments and remap sales executives first.`,
+        );
+      }
+    }
+
     if (data.email && data.email !== user.email) {
       const existing = await this.prisma.user.findUnique({ where: { email: data.email } });
       if (existing) throw new BadRequestException('Email already in use');
@@ -239,6 +262,57 @@ export class UsersService {
     });
 
     return updated;
+  }
+
+  async transferUnderwriter(
+    fromId: string,
+    targetId: string,
+    adminId: string,
+  ) {
+    const fromUw = await this.prisma.user.findUnique({ where: { id: fromId } });
+    if (!fromUw) throw new NotFoundException('Source underwriter not found');
+    if (![UserRole.UNDERWRITER, UserRole.UW_MANAGER].includes(fromUw.role as UserRole)) {
+      throw new BadRequestException('Source user is not an underwriter');
+    }
+
+    const toUw = await this.prisma.user.findUnique({ where: { id: targetId } });
+    if (!toUw) throw new NotFoundException('Target underwriter not found');
+    if (![UserRole.UNDERWRITER, UserRole.UW_MANAGER].includes(toUw.role as UserRole)) {
+      throw new BadRequestException('Target user is not an underwriter');
+    }
+    if (!toUw.isActive) {
+      throw new BadRequestException('Target underwriter is not active');
+    }
+    if (fromId === targetId) {
+      throw new BadRequestException('Source and target underwriter cannot be the same');
+    }
+
+    // Reassign all open UW assignments
+    const assignmentsUpdated = await this.prisma.uwAssignment.updateMany({
+      where: { underwriterId: fromId, status: { in: ['QUEUED', 'IN_PROGRESS'] } },
+      data: { underwriterId: targetId },
+    });
+
+    // Remap all active sales execs
+    const salesExecsUpdated = await this.prisma.user.updateMany({
+      where: { assignedUnderwriterId: fromId, isActive: true },
+      data: { assignedUnderwriterId: targetId },
+    });
+
+    this.activity.log({
+      entityId: fromId,
+      entityType: 'user',
+      userId: adminId,
+      action: 'TRANSFER',
+      detail: `Transferred ${assignmentsUpdated.count} assignment(s) and ${salesExecsUpdated.count} sales exec(s) from ${fromUw.name} to ${toUw.name}`,
+    });
+
+    return {
+      assignmentsTransferred: assignmentsUpdated.count,
+      salesExecsRemapped: salesExecsUpdated.count,
+      from: { id: fromUw.id, name: fromUw.name },
+      to: { id: toUw.id, name: toUw.name },
+    };
   }
 
   async resetPassword(id: string, newPassword: string, adminId: string) {

@@ -81,6 +81,17 @@ export class UsersController {
     return this.usersService.createUser(body, adminId);
   }
 
+  @Post(':id/transfer-underwriter')
+  @Roles('ADMIN')
+  @ApiOperation({ summary: 'Transfer all assignments and sales exec mappings to another underwriter' })
+  async transferUnderwriter(
+    @Param('id') id: string,
+    @Body() body: { targetUnderwriterId: string },
+    @CurrentUser('id') adminId: string,
+  ) {
+    return this.usersService.transferUnderwriter(id, body.targetUnderwriterId, adminId);
+  }
+
   @Patch(':id/reset-password')
   @Roles('ADMIN')
   @ApiOperation({ summary: 'Reset user password' })
